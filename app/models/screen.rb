@@ -1,0 +1,86 @@
+# A plain-English query plus the typed conditions we understood from it.
+# Running a screen scans the universe and records a Match per passing symbol.
+class Screen < ApplicationRecord
+  has_many :conditions, -> { order(:position) }, dependent: :destroy
+  has_many :matches, -> { order(:id) }, dependent: :destroy
+
+  enum :status, %w[pending running done failed].index_by(&:itself)
+
+  validates :query, presence: true
+  validate :understood_something
+
+  # Every change (status, progress) re-renders the progress line for anyone watching.
+  after_update_commit -> { broadcast_replace_to self, target: "progress", partial: "screens/progress", locals: { screen: self } }
+
+  ATTRIBUTES = %i[indicator timeframe operator period value].freeze
+
+  # Parse `query` into an unsaved Screen. Claude proposes when configured;
+  # otherwise (or if it fails) the rule-based parser does. Either way each
+  # proposed condition must pass Condition's validations to be kept.
+  def self.from_query(query)
+    screen = new(query: query.to_s.strip)
+    proposal = screen.propose
+    proposal.conditions.each do |attrs|
+      condition = Condition.new(attrs.slice(*ATTRIBUTES).merge(screen: screen, position: screen.conditions.size))
+      if condition.valid?
+        screen.conditions << condition
+      else
+        screen.notes << "Dropped #{attrs.compact.values.join(" ")}: #{condition.errors.full_messages.to_sentence}"
+      end
+    end
+    proposal.unrecognized.each { |clause| screen.notes << "Didn't understand \"#{clause}\"" }
+    screen
+  end
+
+  def propose
+    if ScreenParser::Claude.enabled?
+      self.source = "claude"
+      return ScreenParser::Claude.parse(query)
+    end
+    ScreenParser.parse(query)
+  rescue => e
+    Rails.logger.warn("Claude parse failed: #{e.class}: #{e.message}")
+    notes << "Claude was unavailable (#{e.class.name.demodulize}), so the rule-based parser was used"
+    self.source = "rules"
+    ScreenParser.parse(query)
+  end
+
+  # Called from RunScreenJob. Scans every symbol, streaming matches as they're found.
+  def run(symbols = Universe.symbols)
+    update!(status: :running, universe_size: symbols.size, scanned_count: 0)
+    skipped = []
+    symbols.each do |symbol|
+      scan(symbol)
+    rescue MarketData::Error => e
+      Rails.logger.warn("Skipping #{symbol}: #{e.message}")
+      skipped << symbol
+    ensure
+      self.scanned_count += 1
+      save!
+    end
+    notes << "No data for #{skipped.size} symbol(s): #{skipped.join(", ")}" if skipped.any?
+    update!(status: :done)
+  rescue => e
+    update!(status: :failed, error_message: e.message)
+    raise
+  end
+
+  def scan(symbol)
+    daily = Bar.series_for(symbol)
+    raise MarketData::Error, "no bars cached" if daily.size.zero?
+
+    results = conditions.map { |condition| [ condition, condition.evaluate(daily.in(condition.timeframe)) ] }
+    return unless results.all? { |_, evaluation| evaluation.passed }
+
+    matches.create!(
+      symbol: symbol,
+      details: results.map { |condition, evaluation| { "label" => condition.label, "observed" => evaluation.observed } },
+      why: results.map { |condition, evaluation| [ ("weekly" if condition.timeframe == "weekly"), evaluation.reason ].compact.join(" ") }.join(" · ")
+    )
+  end
+
+  private
+    def understood_something
+      errors.add(:base, "I couldn't turn that into any screen conditions. Try e.g. \"RSI under 30\".") if conditions.empty?
+    end
+end
