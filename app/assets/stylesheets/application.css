@@ -41,3 +41,4 @@ progress { vertical-align: middle; width: 12rem; }
 .results thead th { font-weight: 600; color: var(--muted); }
 .results td.why { white-space: normal; min-width: 20rem; }
 .recent li { margin: 0.25rem 0; }
+.understood pre { overflow-x: auto; font-size: 0.8rem; }

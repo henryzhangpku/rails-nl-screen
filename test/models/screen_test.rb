@@ -15,6 +15,8 @@ class ScreenTest < ActiveSupport::TestCase
 
   # Pretends to be ScreenParser::Claude.
   module FakeClaude
+    def self.label = "fake-claude"
+
     def self.parse(_text)
       ScreenParser::Result.new([ { indicator: "rsi", operator: "above", value: 50, timeframe: "daily", period: nil },
                                  { indicator: "rsi", operator: "above", value: 500, timeframe: "daily", period: nil },
@@ -40,6 +42,8 @@ class ScreenTest < ActiveSupport::TestCase
     assert_equal [ "RSI(14) above 50" ], screen.conditions.map(&:label)
     assert_equal 3, screen.notes.size
     assert_match(/Dropped rsi above 500/, screen.notes.first)
+    assert_equal "fake-claude", screen.parser
+    assert_equal 3, screen.proposal["conditions"].size # the raw proposal is kept, including what was dropped
   end
 
   test "falls back to the rules when Claude fails" do
@@ -47,6 +51,7 @@ class ScreenTest < ActiveSupport::TestCase
     assert_equal "rules", screen.source
     assert_equal [ "RSI(14) below 30" ], screen.conditions.map(&:label)
     assert_match(/rule-based parser was used/, screen.notes.first)
+    assert_equal "rules v1", screen.parser
   end
 
   test "a query with no recognizable condition is invalid" do

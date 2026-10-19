@@ -45,6 +45,10 @@ module ScreenParser::Claude
 
   def self.enabled? = ENV["ANTHROPIC_API_KEY"].present?
 
+  # Model plus a fingerprint of the prompt and schema, stored on every screen:
+  # change the prompt and you can tell which screens were parsed by which version.
+  def self.label = "#{MODEL}, prompt #{Digest::SHA256.hexdigest(SYSTEM_PROMPT + SCHEMA.to_json).first(8)}"
+
   def self.parse(text, client: Anthropic::Client.new)
     message = client.messages.create(
       model: MODEL,

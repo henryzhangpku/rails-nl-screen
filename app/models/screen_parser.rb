@@ -6,6 +6,7 @@
 # It only *proposes* attributes; Condition validations decide what is allowed.
 module ScreenParser
   Result = Data.define(:conditions, :unrecognized)
+  VERSION = 1 # bump when the rules change, so stored screens say which rules parsed them
 
   NUM   = /(\d+(?:\.\d+)?)/
   ABOVE = /\b(?:above|over|greater than|more than|higher than|exceeds?|at least)\b|>/
@@ -13,6 +14,8 @@ module ScreenParser
   FILLER = /\b(?:show|find|give|list|me|all|any|stocks?|names?|tickers?|companies|that|which|whose|are|is|has|have|where|the|on|its|their|a|an|daily|day|chart)\b/
 
   module_function
+
+  def label = "rules v#{VERSION}"
 
   def parse(text)
     conditions = []

@@ -6,6 +6,12 @@
       <li><code><%= condition.label %></code></li>
     <% end %>
   </ol>
+  <% if screen.proposal.present? %>
+    <details class="notes">
+      <summary>Audit: raw proposal from <%= screen.parser %></summary>
+      <pre><%= JSON.pretty_generate(screen.proposal) %></pre>
+    </details>
+  <% end %>
   <% if screen.notes.any? %>
     <ul class="notes">
       <% screen.notes.each do |note| %>

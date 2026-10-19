@@ -45,12 +45,20 @@ class Screen < ApplicationRecord
 
   def propose_with(parser)
     self.source = parser == ScreenParser ? "rules" : "claude"
-    parser.parse(query)
+    record_proposal(parser, parser.parse(query))
   rescue => e
     Rails.logger.warn("#{parser} failed: #{e.class}: #{e.message}")
     notes << "Claude was unavailable (#{e.class.name.demodulize}), so the rule-based parser was used"
     self.source = "rules"
-    ScreenParser.parse(query)
+    record_proposal(ScreenParser, ScreenParser.parse(query))
+  end
+
+  # Keep exactly what was proposed (and by which parser/prompt version) next to
+  # what code accepted, so every screen can be audited later.
+  def record_proposal(parser, result)
+    self.parser = parser.label
+    self.proposal = result.to_h.as_json
+    result
   end
 
   # Called from RunScreenJob. Scans every symbol, streaming matches as they're found.
