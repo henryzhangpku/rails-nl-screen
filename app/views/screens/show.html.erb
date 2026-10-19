@@ -5,38 +5,8 @@
 <%# Subscribes this page (over Action Cable / Solid Cable) to broadcasts for this screen. %>
 <%= turbo_stream_from @screen %>
 
-<section class="understood">
-  <h1>Here's what I understood</h1>
-  <p class="muted">“<%= @screen.query %>” — parsed by <%= @screen.source == "claude" ? "Claude, then validated by code" : "the rule-based parser" %></p>
-  <ol>
-    <% @screen.conditions.each do |condition| %>
-      <li><code><%= condition.label %></code></li>
-    <% end %>
-  </ol>
-  <% if @screen.notes.any? %>
-    <ul class="notes">
-      <% @screen.notes.each do |note| %>
-        <li><%= note %></li>
-      <% end %>
-    </ul>
-  <% end %>
-</section>
-
+<%= render "screens/understood", screen: @screen %>
 <%= render "screens/progress", screen: @screen %>
-
-<table class="results">
-  <thead>
-    <tr>
-      <th>Ticker</th>
-      <% @screen.conditions.each do |condition| %>
-        <th><%= condition.label %></th>
-      <% end %>
-      <th>Why it matched</th>
-    </tr>
-  </thead>
-  <tbody id="matches">
-    <%= render @screen.matches %>
-  </tbody>
-</table>
+<%= render "screens/results", screen: @screen %>
 
 <p><%= link_to "← New screen", root_path %></p>

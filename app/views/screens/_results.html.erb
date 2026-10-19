@@ -1,0 +1,14 @@
+<table class="results">
+  <thead>
+    <tr>
+      <th>Ticker</th>
+      <% screen.conditions.each do |condition| %>
+        <th><%= condition.label %></th>
+      <% end %>
+      <th>Why it matched</th>
+    </tr>
+  </thead>
+  <tbody id="matches">
+    <%= render screen.matches %>
+  </tbody>
+</table>

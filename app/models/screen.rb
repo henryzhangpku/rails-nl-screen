@@ -16,6 +16,15 @@ class Screen < ApplicationRecord
 
   ATTRIBUTES = %i[indicator timeframe operator period value].freeze
 
+  # Shown as "Try:" buttons on the form, and used to build the static demo.
+  EXAMPLES = [
+    "RSI(14) under 30 on the daily, MACD crossing up, volume above its 20-day average, price above the 200-day moving average",
+    "within 5% of the 52-week high, price above the 50-day EMA, volume 1.5x its 20-day average",
+    "down at least 20% from the 52-week high, RSI under 40, price between $20 and $200",
+    "weekly RSI above 60 and price above the 30-week moving average on the weekly",
+    "MACD crossing up, price above the 200-day moving average"
+  ].freeze
+
   # Parse `query` into an unsaved Screen. Claude proposes when configured;
   # otherwise (or if it fails) the rule-based parser does. Either way each
   # proposed condition must pass Condition's validations to be kept.

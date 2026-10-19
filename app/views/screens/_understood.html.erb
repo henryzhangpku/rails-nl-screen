@@ -1,0 +1,16 @@
+<section class="understood">
+  <h1>Here's what I understood</h1>
+  <p class="muted">“<%= screen.query %>” — parsed by <%= screen.source == "claude" ? "Claude, then validated by code" : "the rule-based parser" %></p>
+  <ol>
+    <% screen.conditions.each do |condition| %>
+      <li><code><%= condition.label %></code></li>
+    <% end %>
+  </ol>
+  <% if screen.notes.any? %>
+    <ul class="notes">
+      <% screen.notes.each do |note| %>
+        <li><%= note %></li>
+      <% end %>
+    </ul>
+  <% end %>
+</section>
