@@ -1,4 +1,7 @@
 <% content_for :title, @screen.query %>
+<% content_for :head do %>
+  <%= turbo_refreshes_with method: :morph, scroll: :preserve %>
+<% end %>
 <%# Subscribes this page (over Action Cable / Solid Cable) to broadcasts for this screen. %>
 <%= turbo_stream_from @screen %>
 
