@@ -9,17 +9,19 @@ class Screen < ApplicationRecord
   validates :query, presence: true
   validate :understood_something
 
-  # Every change (status, progress) re-renders the progress line for anyone watching.
-  after_update_commit -> { broadcast_replace_to self, target: "progress", partial: "screens/progress", locals: { screen: self } }
+  # On every change (status, progress) tell open pages to refresh themselves.
+  # Turbo 8 re-fetches the page and morphs in the difference, so the result is
+  # always the latest state, even if two broadcasts arrive out of order.
+  after_update_commit -> { broadcast_refresh_to self }
 
   ATTRIBUTES = %i[indicator timeframe operator period value].freeze
 
   # Parse `query` into an unsaved Screen. Claude proposes when configured;
   # otherwise (or if it fails) the rule-based parser does. Either way each
   # proposed condition must pass Condition's validations to be kept.
-  def self.from_query(query)
+  def self.from_query(query, parser: ScreenParser::Claude.enabled? ? ScreenParser::Claude : ScreenParser)
     screen = new(query: query.to_s.strip)
-    proposal = screen.propose
+    proposal = screen.propose_with(parser)
     proposal.conditions.each do |attrs|
       condition = Condition.new(attrs.slice(*ATTRIBUTES).merge(screen: screen, position: screen.conditions.size))
       if condition.valid?
@@ -32,31 +34,33 @@ class Screen < ApplicationRecord
     screen
   end
 
-  def propose
-    if ScreenParser::Claude.enabled?
-      self.source = "claude"
-      return ScreenParser::Claude.parse(query)
-    end
-    ScreenParser.parse(query)
+  def propose_with(parser)
+    self.source = parser == ScreenParser ? "rules" : "claude"
+    parser.parse(query)
   rescue => e
-    Rails.logger.warn("Claude parse failed: #{e.class}: #{e.message}")
+    Rails.logger.warn("#{parser} failed: #{e.class}: #{e.message}")
     notes << "Claude was unavailable (#{e.class.name.demodulize}), so the rule-based parser was used"
     self.source = "rules"
     ScreenParser.parse(query)
   end
 
   # Called from RunScreenJob. Scans every symbol, streaming matches as they're found.
-  def run(symbols = Universe.symbols)
+  def run(symbols = Universe.symbols, source: MarketData.source)
     update!(status: :running, universe_size: symbols.size, scanned_count: 0)
     skipped = []
+    last_saved = Time.current
     symbols.each do |symbol|
-      scan(symbol)
+      scan(symbol, source: source)
     rescue MarketData::Error => e
       Rails.logger.warn("Skipping #{symbol}: #{e.message}")
       skipped << symbol
     ensure
       self.scanned_count += 1
-      save!
+      # Save progress at most twice a second: each save broadcasts a page refresh.
+      if Time.current - last_saved > 0.5
+        save!
+        last_saved = Time.current
+      end
     end
     notes << "No data for #{skipped.size} symbol(s): #{skipped.join(", ")}" if skipped.any?
     update!(status: :done)
@@ -65,8 +69,8 @@ class Screen < ApplicationRecord
     raise
   end
 
-  def scan(symbol)
-    daily = Bar.series_for(symbol)
+  def scan(symbol, source: MarketData.source)
+    daily = Bar.series_for(symbol, source: source)
     raise MarketData::Error, "no bars cached" if daily.size.zero?
 
     results = conditions.map { |condition| [ condition, condition.evaluate(daily.in(condition.timeframe)) ] }
