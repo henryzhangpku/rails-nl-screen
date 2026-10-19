@@ -25,8 +25,13 @@ Rails.application.configure do
     config.action_controller.perform_caching = false
   end
 
-  # Change to :null_store to avoid any caching.
-  config.cache_store = :memory_store
+  # Solid Cache (a SQLite table) like production, so "already fetched today"
+  # markers for market data survive restarts.
+  config.cache_store = :solid_cache_store
+
+  # Background jobs go through Solid Queue, run inside Puma (see config/puma.rb).
+  config.active_job.queue_adapter = :solid_queue
+  config.solid_queue.connects_to = { database: { writing: :queue } }
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log

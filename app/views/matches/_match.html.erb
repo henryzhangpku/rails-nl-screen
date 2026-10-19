@@ -1,0 +1,7 @@
+<tr id="<%= dom_id(match) %>">
+  <th><%= match.symbol %></th>
+  <% match.details.each do |detail| %>
+    <td><%= detail["observed"] %></td>
+  <% end %>
+  <td class="why"><%= match.why %></td>
+</tr>

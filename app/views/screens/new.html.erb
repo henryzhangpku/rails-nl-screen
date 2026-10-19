@@ -1,0 +1,35 @@
+<% content_for :title, "New screen" %>
+
+<h1>What are you looking for?</h1>
+
+<%= form_with model: @screen, data: { controller: "examples" } do |form| %>
+  <% if @screen.errors.any? %>
+    <div class="error"><%= @screen.errors.full_messages.to_sentence %></div>
+  <% end %>
+
+  <%= form.text_area :query, rows: 3, autofocus: true, data: { examples_target: "input" },
+        placeholder: "RSI(14) under 30 on the daily, MACD crossing up, volume above its 20-day average, price above the 200-day moving average" %>
+
+  <p class="examples">
+    Try:
+    <% [
+      "RSI(14) under 30 on the daily, MACD crossing up, volume above its 20-day average, price above the 200-day moving average",
+      "within 5% of the 52-week high, price above the 50-day EMA, volume 1.5x its 20-day average",
+      "down at least 20% from the 52-week high, RSI under 40, price between $20 and $200",
+      "weekly RSI above 60 and price above the 30-week moving average on the weekly"
+    ].each do |example| %>
+      <button type="button" data-action="examples#fill" data-examples-query-param="<%= example %>"><%= example %></button>
+    <% end %>
+  </p>
+
+  <%= form.submit "Run screen" %>
+<% end %>
+
+<% if @recent.any? %>
+  <h2>Recent screens</h2>
+  <ul class="recent">
+    <% @recent.each do |screen| %>
+      <li><%= link_to screen.query, screen %> <span class="muted"><%= screen.matches.size %> matches</span></li>
+    <% end %>
+  </ul>
+<% end %>
