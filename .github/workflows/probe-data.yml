@@ -11,17 +11,22 @@ jobs:
     steps:
       - name: Probe
         env:
-          UA: "rails-nl-screen research probe (github actions)"
+          # SEC asks automated clients to identify themselves: "<app> <contact>".
+          SEC_UA: "rails-nl-screen henryzhangpku@users.noreply.github.com"
         run: |
           probe() {
             echo "=== $1"
-            curl -sS -m 20 -A "$UA" -D - -o body "$2" | head -1
-            head -c 400 body; echo; echo
+            curl -sS -m 30 --compressed -A "$SEC_UA" -D - -o body "$2" | head -1
+            echo "bytes: $(wc -c < body)"; head -c 500 body; echo; echo
           }
-          probe stooq-csv        "https://stooq.com/q/d/l/?s=aapl.us&i=d&d1=20261001"
-          probe yahoo-chart      "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?range=1mo&interval=1d"
-          probe sec-tickers      "https://www.sec.gov/files/company_tickers.json"
-          probe sec-companyfacts "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json"
-          probe sec-submissions  "https://data.sec.gov/submissions/CIK0000320193.json"
-          probe finra-shortvol   "https://cdn.finra.org/equity/regsho/daily/CNMSshvol20261016.txt"
-          probe nasdaq-hist      "https://api.nasdaq.com/api/quote/AAPL/historical?assetclass=stocks&fromdate=2026-09-01&limit=5"
+          probe yahoo-chart  "https://query1.finance.yahoo.com/v8/finance/chart/BRK-B?range=5d&interval=1d"
+          probe sec-tickers  "https://www.sec.gov/files/company_tickers.json"
+          probe frame-ocf    "https://data.sec.gov/api/xbrl/frames/us-gaap/NetCashProvidedByUsedInOperatingActivities/USD/CY2025.json"
+          probe frame-capex  "https://data.sec.gov/api/xbrl/frames/us-gaap/PaymentsToAcquirePropertyPlantAndEquipment/USD/CY2025.json"
+          probe frame-rev    "https://data.sec.gov/api/xbrl/frames/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD/CY2025.json"
+          probe frame-rev2   "https://data.sec.gov/api/xbrl/frames/us-gaap/Revenues/USD/CY2025.json"
+          probe frame-shares "https://data.sec.gov/api/xbrl/frames/dei/EntityCommonStockSharesOutstanding/shares/CY2026Q2I.json"
+          for cik in 320193 1067983 789019; do
+            curl -sS -m 30 --compressed -A "$SEC_UA" "https://data.sec.gov/api/xbrl/frames/us-gaap/NetCashProvidedByUsedInOperatingActivities/USD/CY2025.json" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print('ocf', [r for r in d['data'] if r['cik']==$cik])"
+          done
