@@ -59,3 +59,6 @@ group :test do
   gem "capybara"
   gem "selenium-webdriver"
 end
+
+gem "csv", "~> 3.3"
+gem "anthropic", "~> 1.80"
