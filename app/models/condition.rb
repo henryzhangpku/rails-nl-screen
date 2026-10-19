@@ -18,7 +18,10 @@ class Condition < ApplicationRecord
   PERIODS = 2..250
   MACD_CROSS_LOOKBACK = 3 # "crossing up" = crossed within the last 3 bars
 
-  Evaluation = Data.define(:passed, :observed, :reason)
+  # strength: how decisively it passed, 0..1 (used to rank matches). For a
+  # threshold it's the distance past the threshold as a fraction of it, capped
+  # at 1; for a MACD cross, fresher crosses score higher.
+  Evaluation = Data.define(:passed, :observed, :reason, :strength)
 
   before_validation :apply_defaults
   validates :indicator, inclusion: { in: SPECS.keys }
@@ -56,7 +59,8 @@ class Condition < ApplicationRecord
       return insufficient unless hist
       observed = "hist #{fmt(hist, 3)}"
       reason = ago && "MACD crossed #{direction} #{ago.zero? ? "on the last bar" : "#{ago} bar#{"s" if ago > 1} ago"}"
-      Evaluation.new(!ago.nil?, observed, reason)
+      strength = ago ? (MACD_CROSS_LOOKBACK - ago).fdiv(MACD_CROSS_LOOKBACK) : 0.0
+      Evaluation.new(!ago.nil?, observed, reason, strength)
     when "sma", "ema"
       ma = Indicators.public_send(indicator, closes, period).last
       return insufficient unless ma
@@ -95,12 +99,13 @@ class Condition < ApplicationRecord
 
     def compare(left, observed, reason, against: value)
       passed = operator == "above" ? left > against : left < against
-      Evaluation.new(passed, observed, reason)
+      strength = passed ? [ (left - against).abs / against.abs, 1.0 ].min : 0.0
+      Evaluation.new(passed, observed, reason, strength)
     end
 
     def symbol = operator == "above" ? ">" : "<"
 
-    def insufficient = Evaluation.new(false, "n/a", nil)
+    def insufficient = Evaluation.new(false, "n/a", nil, 0.0)
 
     def fmt(number, digits = 2)
       number.to_f.round(digits).to_s.sub(/\.0\z/, "")

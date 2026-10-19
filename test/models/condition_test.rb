@@ -50,12 +50,14 @@ class ConditionTest < ActiveSupport::TestCase
     volume = condition(indicator: "volume", operator: "above", value: 2.5).tap(&:validate).evaluate(series)
     assert volume.passed
     assert_equal "volume 3x its 20-bar avg", volume.reason
+    assert_in_delta 0.2, volume.strength, 1e-9 # 3x vs a 2.5x threshold: 20% past it
   end
 
   test "not enough history never passes" do
     result = condition(indicator: "sma", operator: "above", period: 200).evaluate(rising_series(days: 50))
     refute result.passed
     assert_equal "n/a", result.observed
+    assert_equal 0.0, result.strength
   end
 
   test "macd cross up after a dip and recovery" do
@@ -66,6 +68,7 @@ class ConditionTest < ActiveSupport::TestCase
     result = condition(indicator: "macd", operator: "crosses_up").evaluate(series)
     assert result.passed
     assert_equal "MACD crossed up 1 bar ago", result.reason
+    assert_in_delta 2.0 / 3, result.strength, 1e-9 # fresher crosses rank higher
     refute condition(indicator: "macd", operator: "crosses_down").evaluate(series).passed
   end
 end

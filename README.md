@@ -12,6 +12,7 @@ and the app:
 2. **shows you what it understood** before any results,
 3. **runs it in a background job** over ~100 large US tickers using free daily prices (Yahoo's chart API), cached in SQLite,
 4. **streams each match into the results table live** (Turbo Streams), with the value of every condition and a one-line "why it matched".
+5. **ranks the survivors**: each passing condition scores how far past its threshold the stock is (0 to 1; for a MACD cross, how recent it was), and matches are sorted by the average.
 
 No React, no Node build, no paid data. Optional: if `ANTHROPIC_API_KEY` is set, Claude (`claude-sonnet-5-5`) *proposes* the typed screen as JSON, and the same whitelist validations decide what is kept. The model proposes; code decides. Without the key, the deterministic rule-based parser does everything.
 
@@ -83,7 +84,7 @@ Anything it can't map is shown back as "Didn't understand ...", never silently g
 6. `Bar.series_for(symbol)` returns cached bars, fetching via `MarketData::Yahoo` at most daily (marker in Solid Cache).
 7. `PriceSeries` holds the bars (and resamples to weekly); `Indicators` is pure Ruby math over arrays.
 8. `Condition#evaluate(series)` returns `passed`, the observed value, and a short reason.
-9. When all conditions pass, a `Match` is created; its `after_create_commit` appends a table row via Turbo Streams (over Solid Cable).
+9. When all conditions pass, a scored `Match` is created; its `after_create_commit` appends a table row via Turbo Streams (over Solid Cable).
 10. Progress changes on `Screen` broadcast a Turbo 8 page refresh, so the status line is always current.
 
 ## What's new in Rails 8 vs 2007-era Rails (a map for Henry)

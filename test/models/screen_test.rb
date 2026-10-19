@@ -1,11 +1,12 @@
 require "test_helper"
 
 class ScreenTest < ActiveSupport::TestCase
-  # Pretends to be MarketData::Yahoo: UP rises steadily, DOWN falls, MISSING has no data.
+  # Pretends to be MarketData::Yahoo: UP rises steadily, FAST rises twice as fast,
+  # DOWN falls, MISSING has no data.
   module FakeSource
     def self.fetch(symbol)
       raise MarketData::Error, "no data" if symbol == "MISSING"
-      step = symbol == "UP" ? 1 : -0.2
+      step = { "UP" => 1, "FAST" => 2 }.fetch(symbol, -0.2)
       (0...300).map do |i|
         close = 100.0 + i * step
         { date: Date.new(2025, 1, 1) + i, open: close, high: close + 1, low: close - 1, close: close, volume: 1_000 }
@@ -52,6 +53,15 @@ class ScreenTest < ActiveSupport::TestCase
     assert_equal [ "RSI(14) below 30" ], screen.conditions.map(&:label)
     assert_match(/rule-based parser was used/, screen.notes.first)
     assert_equal "rules v1", screen.parser
+  end
+
+  test "matches are ranked by how decisively they pass" do
+    screen = Screen.from_query("RSI above 70, price above the 200-day moving average", parser: ScreenParser)
+    screen.save!
+    screen.run(%w[UP FAST DOWN], source: FakeSource)
+
+    assert_equal %w[FAST UP], screen.matches.map(&:symbol) # FAST is further above its SMA200
+    assert screen.matches.all? { |m| m.score.between?(0, 1) }
   end
 
   test "a query with no recognizable condition is invalid" do

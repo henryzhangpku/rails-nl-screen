@@ -2,7 +2,7 @@
 # Running a screen scans the universe and records a Match per passing symbol.
 class Screen < ApplicationRecord
   has_many :conditions, -> { order(:position) }, dependent: :destroy
-  has_many :matches, -> { order(:id) }, dependent: :destroy
+  has_many :matches, -> { order(score: :desc, id: :asc) }, dependent: :destroy # ranked, strongest first
 
   enum :status, %w[pending running done failed].index_by(&:itself)
 
@@ -95,6 +95,7 @@ class Screen < ApplicationRecord
 
     matches.create!(
       symbol: symbol,
+      score: results.sum { |_, evaluation| evaluation.strength } / results.size,
       details: results.map { |condition, evaluation| { "label" => condition.label, "observed" => evaluation.observed } },
       why: results.map { |condition, evaluation| [ ("weekly" if condition.timeframe == "weekly"), evaluation.reason ].compact.join(" ") }.join(" · ")
     )

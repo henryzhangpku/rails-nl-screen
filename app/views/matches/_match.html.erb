@@ -1,4 +1,5 @@
 <tr id="<%= dom_id(match) %>">
+  <td><%= number_with_precision(match.score, precision: 2) %></td>
   <th><%= match.symbol %></th>
   <% match.details.each do |detail| %>
     <td><%= detail["observed"] %></td>

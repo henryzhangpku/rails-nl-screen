@@ -1,6 +1,7 @@
 <table class="results">
   <thead>
     <tr>
+      <th title="Average of how far past each threshold the stock is (0 to 1). Re-sorted as results arrive.">Score</th>
       <th>Ticker</th>
       <% screen.conditions.each do |condition| %>
         <th><%= condition.label %></th>
