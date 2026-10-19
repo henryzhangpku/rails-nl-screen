@@ -30,7 +30,10 @@ namespace :demo do
     end
 
     assigns = { built_on: Date.current, data_source: data_source }
-    render = ->(template, extra) { ApplicationController.render(template: template, layout: "demo", assigns: assigns.merge(extra)) }
+    render = lambda do |template, extra|
+      html = ApplicationController.render(template: template, layout: "demo", assigns: assigns.merge(extra))
+      html.gsub(/<!-- (BEGIN|END) app\/views.*?-->\n?/m, "") # development's view-filename annotations
+    end
 
     File.write(out.join("index.html"), render.("demo/index", screens: screens))
     screens.each_with_index do |screen, i|

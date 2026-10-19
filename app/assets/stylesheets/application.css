@@ -7,19 +7,22 @@
   --ok: #15803d;
   --bad: #b91c1c;
   --panel: #ffffff;
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
+/* Dark palette: follows the OS setting unless a page explicitly asks for light,
+   and also applies when a page explicitly asks for dark. */
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --accent: #60a5fa; --ok: #4ade80; --bad: #f87171; --panel: #292524; }
+  :root:not([data-theme="light"]) { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --accent: #60a5fa; --ok: #4ade80; --bad: #f87171; --panel: #292524; color-scheme: dark; }
 }
+:root[data-theme="dark"] { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --accent: #60a5fa; --ok: #4ade80; --bad: #f87171; --panel: #292524; color-scheme: dark; }
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
-header { display: flex; gap: 1rem; align-items: baseline; padding: 1rem; border-bottom: 1px solid var(--line); }
+header { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; align-items: baseline; padding-block: 1rem; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 700; color: var(--fg); text-decoration: none; }
 .tagline, .muted { color: var(--muted); font-size: 0.9rem; }
-main { max-width: 72rem; margin: 0 auto; padding: 1rem; }
+main { max-width: 72rem; margin: 0 auto; padding-block: 1rem; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 a { color: var(--accent); }
 h1 { font-size: 1.5rem; }
 
@@ -36,7 +39,7 @@ input[type=submit] { padding: 0.5rem 1.25rem; font: inherit; border: 0; border-r
 .progress.failed { color: var(--bad); }
 progress { vertical-align: middle; width: 12rem; }
 
-.results { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.9rem; }
+.results { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
 .results th, .results td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .results thead th { font-weight: 600; color: var(--muted); }
 .results td.why { white-space: normal; min-width: 20rem; }
