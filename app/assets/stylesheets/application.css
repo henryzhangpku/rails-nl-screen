@@ -1,10 +1,43 @@
-/*
- * This is a manifest file that'll be compiled into application.css.
- *
- * With Propshaft, assets are served efficiently without preprocessing steps. You can still include
- * application-wide styles in this file, but keep in mind that CSS precedence will follow the standard
- * cascading order, meaning styles declared later in the document or manifest will override earlier ones,
- * depending on specificity.
- *
- * Consider organizing styles into separate files for maintainability.
- */
+:root {
+  --bg: #fafaf9;
+  --fg: #1c1917;
+  --muted: #78716c;
+  --line: #e7e5e4;
+  --accent: #2563eb;
+  --ok: #15803d;
+  --bad: #b91c1c;
+  --panel: #ffffff;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --accent: #60a5fa; --ok: #4ade80; --bad: #f87171; --panel: #292524; }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+header { display: flex; gap: 1rem; align-items: baseline; padding: 1rem; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; color: var(--fg); text-decoration: none; }
+.tagline, .muted { color: var(--muted); font-size: 0.9rem; }
+main { max-width: 72rem; margin: 0 auto; padding: 1rem; }
+a { color: var(--accent); }
+h1 { font-size: 1.5rem; }
+
+textarea { width: 100%; padding: 0.75rem; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
+input[type=submit] { padding: 0.5rem 1.25rem; font: inherit; border: 0; border-radius: 6px; background: var(--accent); color: white; cursor: pointer; }
+.examples button { display: block; margin: 0.25rem 0; padding: 0.25rem 0.5rem; text-align: left; font: inherit; font-size: 0.85rem; border: 1px dashed var(--line); border-radius: 4px; background: none; color: var(--muted); cursor: pointer; }
+.examples button:hover { color: var(--fg); }
+.error { color: var(--bad); margin-bottom: 0.5rem; }
+
+.understood { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0 1rem 0.5rem; }
+.notes { color: var(--muted); font-size: 0.9rem; }
+.progress { margin: 1rem 0; }
+.progress.done { color: var(--ok); }
+.progress.failed { color: var(--bad); }
+progress { vertical-align: middle; width: 12rem; }
+
+.results { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.9rem; }
+.results th, .results td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.results thead th { font-weight: 600; color: var(--muted); }
+.results td.why { white-space: normal; min-width: 20rem; }
+.recent li { margin: 0.25rem 0; }
