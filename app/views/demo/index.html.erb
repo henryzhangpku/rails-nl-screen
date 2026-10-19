@@ -1,0 +1,11 @@
+<% content_for :title, "NL Screen demo" %>
+
+<h1>Plain-English stock screens</h1>
+<ul class="recent">
+  <% @screens.each_with_index do |screen, i| %>
+    <li>
+      <a href="screen-<%= i + 1 %>.html"><%= screen.query %></a>
+      <span class="muted"><%= pluralize(screen.matches.size, "match") %> out of <%= screen.universe_size %></span>
+    </li>
+  <% end %>
+</ul>

@@ -15,6 +15,18 @@ and the app:
 
 No React, no Node build, no paid data. Optional: if `ANTHROPIC_API_KEY` is set, Claude (`claude-sonnet-5-5`) *proposes* the typed screen as JSON, and the same whitelist validations decide what is kept. The model proposes; code decides. Without the key, the deterministic rule-based parser does everything.
 
+## Demo
+
+A static snapshot of the example screens is published to GitHub Pages:
+**https://henryzhangpku.github.io/rails-nl-screen/** (rebuilt on every push to `main` and each weekday
+after the US close by `.github/workflows/pages.yml`).
+
+It's read-only: Pages serves plain files, while the real app needs a Ruby server for the database,
+background jobs and live updates. `bin/rails demo:export` (`lib/tasks/demo.rake`) runs each query in
+`Screen::EXAMPLES` exactly as the job would, renders the same partials the live page uses with
+`ApplicationController.render`, and writes HTML to `tmp/site/`. It uses real Stooq prices, or
+labelled synthetic ones if Stooq can't be reached.
+
 ## Setup
 
 Needs Ruby 3.3 (see `.ruby-version`) and, for system tests, Chrome.
@@ -102,6 +114,7 @@ look in this repo.
 | Test::Unit, fixtures only | Minitest (still the default), parallel tests, **system tests** in a real browser | `test/models/*`, `test/system/screens_test.rb` |
 | — | Ruby 3 niceties used here: `Data.define` value objects, endless methods (`def spec = SPECS[indicator]`) | `Condition::Evaluation`, `PriceSeries::Point`, `ScreenParser::Result` |
 | — | Built-in health check, Brakeman, RuboCop (omakase style), GitHub Actions CI | `/up` route, `.github/workflows/ci.yml` |
+| `rake` tasks, views only inside requests | Rake still, plus **rendering views anywhere** with `ApplicationController.render` | `lib/tasks/demo.rake` builds the Pages demo from the real partials |
 
 Things that did **not** change much: MVC, ActiveRecord, migrations, `resources` routing, ERB, and "convention over
 configuration". Read in this order: `config/routes.rb`, `app/controllers/screens_controller.rb`, `app/models/screen.rb`,
