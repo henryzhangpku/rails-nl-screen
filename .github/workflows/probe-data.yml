@@ -1,0 +1,27 @@
+# Manual check: which free market-data sources answer from a normal machine?
+# Run from the Actions tab ("Probe data sources" -> Run workflow) and read the log.
+name: Probe data sources
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe
+        env:
+          UA: "rails-nl-screen research probe (github actions)"
+        run: |
+          probe() {
+            echo "=== $1"
+            curl -sS -m 20 -A "$UA" -D - -o body "$2" | head -1
+            head -c 400 body; echo; echo
+          }
+          probe stooq-csv        "https://stooq.com/q/d/l/?s=aapl.us&i=d&d1=20261001"
+          probe yahoo-chart      "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?range=1mo&interval=1d"
+          probe sec-tickers      "https://www.sec.gov/files/company_tickers.json"
+          probe sec-companyfacts "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json"
+          probe sec-submissions  "https://data.sec.gov/submissions/CIK0000320193.json"
+          probe finra-shortvol   "https://cdn.finra.org/equity/regsho/daily/CNMSshvol20261016.txt"
+          probe nasdaq-hist      "https://api.nasdaq.com/api/quote/AAPL/historical?assetclass=stocks&fromdate=2026-09-01&limit=5"
