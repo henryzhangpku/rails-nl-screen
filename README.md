@@ -10,7 +10,7 @@ and the app:
 
 1. **parses** it into a typed, whitelisted screen (`Condition` rows: indicator, timeframe, operator, period, value),
 2. **shows you what it understood** before any results,
-3. **runs it in a background job** over ~100 large US tickers using free daily prices from [Stooq](https://stooq.com), cached in SQLite,
+3. **runs it in a background job** over ~100 large US tickers using free daily prices (Yahoo's chart API), cached in SQLite,
 4. **streams each match into the results table live** (Turbo Streams), with the value of every condition and a one-line "why it matched".
 
 No React, no Node build, no paid data. Optional: if `ANTHROPIC_API_KEY` is set, Claude (`claude-sonnet-5-5`) *proposes* the typed screen as JSON, and the same whitelist validations decide what is kept. The model proposes; code decides. Without the key, the deterministic rule-based parser does everything.
@@ -24,8 +24,8 @@ after the US close by `.github/workflows/pages.yml`).
 It's read-only: Pages serves plain files, while the real app needs a Ruby server for the database,
 background jobs and live updates. `bin/rails demo:export` (`lib/tasks/demo.rake`) runs each query in
 `Screen::EXAMPLES` exactly as the job would, renders the same partials the live page uses with
-`ApplicationController.render`, and writes HTML to `tmp/site/`. It uses real Stooq prices, or
-labelled synthetic ones if Stooq can't be reached.
+`ApplicationController.render`, and writes HTML to `tmp/site/`. It uses real prices, or
+labelled synthetic ones if the price source can't be reached.
 
 ## Setup
 
@@ -40,13 +40,14 @@ open http://localhost:3000
 Useful switches:
 
 ```sh
-MARKET_DATA=synthetic bin/dev          # offline: deterministic fake prices instead of Stooq
+MARKET_DATA=synthetic bin/dev          # offline: deterministic fake prices instead of Yahoo
 ANTHROPIC_API_KEY=sk-ant-... bin/dev   # let Claude propose the parse (still validated by code)
 ```
 
-The first run of a screen fetches ~100 CSVs from Stooq (one per ticker); after that, bars come from the
-`bars` table and each ticker is re-fetched at most once a day. If Stooq rate-limits you, those tickers are
-listed as "No data" and skipped; use `MARKET_DATA=synthetic` to keep playing.
+The first run of a screen makes ~100 requests to Yahoo's chart API (one per ticker); after that, bars come
+from the `bars` table and each ticker is re-fetched at most once a day. If a ticker can't be fetched it is
+listed as "No data" and skipped; use `MARKET_DATA=synthetic` to keep playing offline. (Stooq, the original
+source, now puts a JavaScript bot check in front of its CSV downloads, so it was replaced.)
 
 Tests:
 
@@ -79,7 +80,7 @@ Anything it can't map is shown back as "Didn't understand ...", never silently g
 3. `Condition::SPECS` is the whitelist; Condition validations drop anything that doesn't fit.
 4. The show page renders "Here's what I understood" and subscribes with `turbo_stream_from @screen`.
 5. `RunScreenJob` (Solid Queue) calls `Screen#run`, which walks `Universe.symbols`.
-6. `Bar.series_for(symbol)` returns cached bars, fetching via `MarketData::Stooq` at most daily (marker in Solid Cache).
+6. `Bar.series_for(symbol)` returns cached bars, fetching via `MarketData::Yahoo` at most daily (marker in Solid Cache).
 7. `PriceSeries` holds the bars (and resamples to weekly); `Indicators` is pure Ruby math over arrays.
 8. `Condition#evaluate(series)` returns `passed`, the observed value, and a short reason.
 9. When all conditions pass, a `Match` is created; its `after_create_commit` appends a table row via Turbo Streams (over Solid Cable).
@@ -99,7 +100,7 @@ look in this repo.
 | `javascripts/*.js` + inline JS | **Stimulus** controllers: small classes wired up with `data-` attributes | `app/javascript/controllers/examples_controller.js` (`data-action="examples#fill"`) |
 | Sprockets (from 3.1), then Webpacker | **Importmaps** (no bundler, no Node) + **Propshaft** (just serves and fingerprints files) | `config/importmap.rb`, `app/javascript/application.js`, `app/assets/stylesheets/application.css` |
 | `vendor/plugins`, `config.gem` | **Bundler** + `Gemfile.lock` | `Gemfile` (`anthropic`, `csv` added with `bundle add`) |
-| `require_dependency`, const_missing magic | **Zeitwerk** autoloading: file path = constant name | `app/models/market_data/stooq.rb` is `MarketData::Stooq`; `app/models/screen_parser/claude.rb` is `ScreenParser::Claude` |
+| `require_dependency`, const_missing magic | **Zeitwerk** autoloading: file path = constant name | `app/models/market_data/yahoo.rb` is `MarketData::Yahoo`; `app/models/screen_parser/claude.rb` is `ScreenParser::Claude` |
 | BackgrounDRb, `script/runner` from cron | **Active Job** + **Solid Queue** (jobs in a database table, no Redis) | `app/jobs/run_screen_job.rb`, `config/queue.yml`, `config/puma.rb` (`plugin :solid_queue`) |
 | memcached | **Solid Cache** (cache in a SQLite/DB table) | `config/cache.yml`, `Rails.cache.fetch` in `app/models/bar.rb` |
 | No WebSockets | **Action Cable** + **Solid Cable** (pub/sub through a DB table) | `config/cable.yml` |
@@ -123,4 +124,4 @@ configuration". Read in this order: `config/routes.rb`, `app/controllers/screens
 ## Not done (on purpose)
 
 - No auth, no deploy secrets. Before using Kamal you'd run `bin/rails credentials:edit` and fill in `config/deploy.yml`.
-- Prices are end-of-day and unadjusted beyond what Stooq provides; this is a learning toy, not a trading tool.
+- Prices are end-of-day, split-adjusted but not dividend-adjusted, from an unofficial API; this is a learning toy, not a trading tool.

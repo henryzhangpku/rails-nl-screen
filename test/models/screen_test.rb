@@ -1,7 +1,7 @@
 require "test_helper"
 
 class ScreenTest < ActiveSupport::TestCase
-  # Pretends to be MarketData::Stooq: UP rises steadily, DOWN falls, MISSING has no data.
+  # Pretends to be MarketData::Yahoo: UP rises steadily, DOWN falls, MISSING has no data.
   module FakeSource
     def self.fetch(symbol)
       raise MarketData::Error, "no data" if symbol == "MISSING"

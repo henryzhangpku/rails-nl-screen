@@ -11,15 +11,15 @@ namespace :demo do
     FileUtils.rm_rf(out)
     FileUtils.mkdir_p(out)
 
-    # Prefer real Stooq prices; fall back to synthetic ones if Stooq is unreachable.
+    # Prefer real prices; fall back to synthetic ones if the source is unreachable.
     source = MarketData.source
     begin
       source.fetch("AAPL")
     rescue MarketData::Error => e
-      puts "Stooq unavailable (#{e.message}); using synthetic prices"
+      puts "Real prices unavailable (#{e.message}); using synthetic prices"
       source = MarketData::Synthetic
     end
-    data_source = source == MarketData::Synthetic ? "synthetic (simulated) prices" : "real daily prices from Stooq"
+    data_source = source == MarketData::Synthetic ? "synthetic (simulated) prices" : "real daily prices (Yahoo chart API)"
 
     screens = Screen::EXAMPLES.map do |query|
       screen = Screen.from_query(query, parser: ScreenParser)

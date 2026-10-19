@@ -1,5 +1,5 @@
 # Publishes a static snapshot of the example screens to GitHub Pages.
-# The build runs on GitHub's machines, which can reach Stooq for real prices.
+# The build runs on GitHub's machines, which can reach Yahoo for real prices.
 name: Pages
 
 on:
