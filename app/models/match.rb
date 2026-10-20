@@ -1,4 +1,5 @@
-# A symbol that passed every condition of a screen, with the observed values.
+# A symbol that passed every condition of a screen: the values of the fields its
+# screen uses (details), why it matched, and its place in the ranking.
 # == Schema Information
 #
 # Table name: matches
@@ -6,6 +7,7 @@
 #
 #  id         :integer          not null, primary key
 #  details    :json             not null
+#  rank       :integer
 #  score      :float            default(0.0), not null
 #  symbol     :string           not null
 #  why        :string           not null

@@ -1,0 +1,4 @@
+/* The funnel: entered, passed, failed and missing data at each step of a screen. */
+.ns-funnel__step { white-space: normal; min-width: 14rem; }
+.ns-funnel__count { text-align: right; font-family: var(--ns-font-mono); width: 5.5rem; }
+.ns-funnel__count--pass { color: var(--ns-up); font-weight: 600; }

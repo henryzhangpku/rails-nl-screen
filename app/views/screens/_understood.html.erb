@@ -3,14 +3,30 @@
   <div class="ns-prompt" style="view-transition-name: <%= dom_id(screen) %>"><%= screen.query %></div>
   <ul class="ns-chips">
     <% screen.conditions.each do |condition| %>
-      <li class="ns-chip"><%= condition.label.delete_suffix(" (weekly)") %><% if condition.timeframe == "weekly" %><span class="ns-chip__timeframe">weekly</span><% end %></li>
+      <li class="ns-chip"><%= condition.label %></li>
     <% end %>
   </ul>
-  <% notes = screen.notes.grep_v(/\ANo data/) %>
+  <% if screen.not_screened.any? %>
+    <div class="ns-unmapped">
+      <h2 class="ns-unmapped__title">Not screened</h2>
+      <ul class="ns-unmapped__list">
+        <% screen.not_screened.each do |item| %>
+          <li><span class="ns-unmapped__text"><%= item["text"] %></span>: <%= item["reason"] %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+  <% notes = screen.notes.grep_v(/\A#{Screen::NO_DATA}/) %>
   <% if notes.any? %>
     <ul class="ns-notes">
       <% notes.each do |note| %><li><%= note %></li><% end %>
     </ul>
+  <% end %>
+  <% if screen.spec.present? %>
+    <details class="ns-audit">
+      <summary class="ns-audit__summary">Show spec (the contract shared with EquityScout)</summary>
+      <pre class="ns-audit__json"><%= JSON.pretty_generate(screen.spec) %></pre>
+    </details>
   <% end %>
   <% if screen.proposal.present? %>
     <details class="ns-audit">

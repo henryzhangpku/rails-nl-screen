@@ -6,7 +6,8 @@
  *   foundation.css  colour/type tokens (light + dark), element defaults, ns-text, ns-stack
  *   shell.css       ns-topbar, ns-page, ns-footer, ns-banner
  *   compose.css     ns-compose (the query form), ns-examples, ns-recent
- *   understood.css  ns-prompt, ns-chips/ns-chip, ns-notes, ns-audit
+ *   understood.css  ns-prompt, ns-chips/ns-chip, ns-notes, ns-audit, ns-unmapped (not screened)
+ *   funnel.css      ns-funnel (passed, failed, no data per step)
  *   stats.css       ns-stats (progress strip)
  *   results.css     ns-table (ranked results), ns-score
  *   cards.css       ns-cards/ns-card (static demo index)

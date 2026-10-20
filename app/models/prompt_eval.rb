@@ -10,19 +10,17 @@ class PromptEval
   CASES_FILE = Rails.root.join("db/evals/screen_parser.yml")
   SET_NAME = "Example screens"
 
-  # One line per accepted condition, sorted, plus a marker when part of the
-  # query was reported as not understood. Same shape as a test case's expected_output.
-  def self.expected_output(labels, unrecognized: false)
-    (labels.sort + (unrecognized ? [ "(reports something it didn't understand)" ] : [])).join("\n")
+  # One line per accepted condition (its plain-English wording), sorted, plus a marker
+  # when part of the query is reported as not screened. Same shape as a test case's
+  # expected_output, so "rsi14 < 30" and "rsi14 < 30.0" grade the same.
+  def self.expected_output(labels, not_screened: false)
+    (labels.sort + (not_screened ? [ "(reports something as not screened)" ] : [])).join("\n")
   end
 
+  # Grades a proposal by what the code accepts from it: Screen#adopt, as for a real screen.
   def self.output_for(result)
-    screen = Screen.new
-    labels = result.conditions.filter_map do |attrs|
-      condition = Condition.new(attrs.slice(*Screen::ATTRIBUTES).merge(screen: screen))
-      condition.label if condition.valid?
-    end
-    expected_output(labels, unrecognized: result.unrecognized.any?)
+    screen = Screen.new(query: "eval").tap { _1.adopt(result) }
+    expected_output(screen.conditions.map(&:label), not_screened: screen.not_screened.any?)
   end
 
   def self.cases = YAML.load_file(CASES_FILE)
@@ -37,7 +35,7 @@ class PromptEval
       cases.each do |c|
         set.test_cases.find_or_initialize_by(description: c["query"])
            .update!(input_variables: { "query" => c["query"] },
-                    expected_output: expected_output(c["expected"], unrecognized: c["unrecognized"]))
+                    expected_output: expected_output(c["expected"], not_screened: c["not_screened"]))
       end
       set.test_cases.where.not(description: cases.pluck("query")).destroy_all
     end

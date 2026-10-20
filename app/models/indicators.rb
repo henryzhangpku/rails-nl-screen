@@ -1,11 +1,21 @@
 # Pure functions over arrays of numbers. Each returns an array the same length
 # as its input, with nil where there isn't enough history yet ("warm-up").
 #
-#   Indicators.sma([1, 2, 3, 4], 2)  # => [nil, 1.5, 2.5, 3.5]
+# The conventions are EquityScout's (src/scout/indicators.py there), so the same
+# prices give the same numbers in both versions of the product:
+#
+# * SMA(n): arithmetic mean of the last n closes.
+# * EMA(span): seeded with the first value, then value * k + previous * (1 - k),
+#   k = 2 / (span + 1) (pandas ewm with adjust=False).
+# * RSI(n): Wilder's smoothing. The first average gain/loss is the simple mean of
+#   the first n changes; afterwards avg = (prev * (n - 1) + current) / n.
+# * MACD: EMA(12) - EMA(26) of close, signal = EMA(9) of MACD, histogram = MACD - signal.
+# * Momentum over k sessions: close[t] / close[t - k] - 1.
+# * Volume ratio: today's volume / mean volume of the previous n sessions.
+# * Drawdown from the 52-week high: close / max(close over the last 252 sessions) - 1.
 module Indicators
   module_function
 
-  # Simple moving average.
   def sma(values, period)
     values.each_index.map do |i|
       next nil if i < period - 1
@@ -13,20 +23,13 @@ module Indicators
     end
   end
 
-  # Exponential moving average, seeded with the SMA of the first `period` values.
-  def ema(values, period)
-    k = 2.0 / (period + 1)
-    result = Array.new(values.size)
-    return result if values.size < period
-
-    result[period - 1] = values.first(period).sum.to_f / period
-    (period...values.size).each do |i|
-      result[i] = values[i] * k + result[i - 1] * (1 - k)
+  def ema(values, span)
+    k = 2.0 / (span + 1)
+    values.each_with_object([]) do |value, result|
+      result << (result.empty? ? value.to_f : value * k + result.last * (1 - k))
     end
-    result
   end
 
-  # Relative Strength Index with Wilder's smoothing (the textbook definition).
   def rsi(values, period = 14)
     result = Array.new(values.size)
     return result if values.size <= period
@@ -46,41 +49,47 @@ module Indicators
     result
   end
 
+  # A flat series (no gains, no losses) is neutral, 50; only gains is 100.
   def rsi_from(avg_gain, avg_loss)
-    return 100.0 if avg_loss.zero?
+    return avg_gain.positive? ? 100.0 : 50.0 if avg_loss.zero?
     100 - (100 / (1 + avg_gain / avg_loss))
   end
 
-  # MACD line (fast EMA - slow EMA), its signal line (EMA of MACD) and histogram.
   def macd(values, fast: 12, slow: 26, signal: 9)
-    fast_ema = ema(values, fast)
-    slow_ema = ema(values, slow)
-    line = fast_ema.zip(slow_ema).map { |f, s| f && s && f - s }
-
-    first = line.index { |v| v }
-    signal_line = Array.new(values.size)
-    if first
-      ema(line[first..], signal).each_with_index { |v, i| signal_line[first + i] = v }
-    end
-
-    histogram = line.zip(signal_line).map { |m, s| m && s && m - s }
-    { line: line, signal: signal_line, histogram: histogram }
+    line = ema(values, fast).zip(ema(values, slow)).map { |f, s| f - s }
+    signal_line = ema(line, signal)
+    { line: line, signal: signal_line, histogram: line.zip(signal_line).map { |m, s| m - s } }
   end
 
-  # How many bars ago `a` most recently crossed `b` in the given direction
-  # (:up = from at-or-below to above), looking back at most `within` bars.
-  # Returns 0 for "on the latest bar", nil if no cross in the window.
-  def bars_since_cross(a, b, direction:, within:)
-    last = a.size - 1
-    (0...within).each do |ago|
-      i = last - ago
-      break if i < 1
-      prev_a, prev_b, cur_a, cur_b = a[i - 1], b[i - 1], a[i], b[i]
-      next if [ prev_a, prev_b, cur_a, cur_b ].any?(&:nil?)
-
-      crossed = direction == :up ? (prev_a <= prev_b && cur_a > cur_b) : (prev_a >= prev_b && cur_a < cur_b)
-      return ago if crossed
-    end
-    nil
+  def momentum(values, k)
+    values.each_index.map { |i| i >= k ? values[i] / values[i - k].to_f - 1 : nil }
   end
+
+  def volume_ratio(volumes, period)
+    volumes.each_index.map do |i|
+      next nil if i < period
+      prior = volumes[(i - period)...i].sum.to_f / period
+      prior.zero? ? nil : volumes[i] / prior
+    end
+  end
+
+  def drawdown_from_high(values, period = 252)
+    values.each_index.map do |i|
+      next nil if i < period - 1
+      values[i] / values[(i - period + 1)..i].max.to_f - 1
+    end
+  end
+
+  # True when the histogram goes from <= 0 on the previous bar to > 0 on the last;
+  # nil when that can't be told.
+  def crossed_above(histogram)
+    previous, last = histogram.last(2)
+    return nil if histogram.size < 2 || previous.nil? || last.nil?
+
+    previous <= 0 && last.positive?
+  end
+
+  # a > b, with a gap inside rounding counted as a tie, not above (a halted stock's
+  # SMA50 can equal its SMA200, and summation order decides the last digit).
+  def above?(a, b, rel: 1e-9) = (a - b) > rel * b.abs
 end

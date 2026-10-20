@@ -1,0 +1,30 @@
+<%# Each step: how many names entered, passed, failed, and had no value (a gap in the data, never guessed). %>
+<% if screen.funnel.present? %>
+  <section class="ns-stack" id="funnel">
+    <h2>Funnel</h2>
+    <div class="ns-table-wrap">
+      <table class="ns-table ns-funnel">
+        <thead>
+          <tr>
+            <th class="ns-table__head">Step</th>
+            <th class="ns-table__head ns-funnel__count">In</th>
+            <th class="ns-table__head ns-funnel__count">Passed</th>
+            <th class="ns-table__head ns-funnel__count">Failed</th>
+            <th class="ns-table__head ns-funnel__count">No data</th>
+          </tr>
+        </thead>
+        <tbody class="ns-table__body">
+          <% screen.funnel.each do |step| %>
+            <tr>
+              <td class="ns-table__cell ns-funnel__step"><%= step["step"] %></td>
+              <td class="ns-table__cell ns-funnel__count"><%= step["n_in"] %></td>
+              <td class="ns-table__cell ns-funnel__count ns-funnel__count--pass"><%= step["n_pass"] %></td>
+              <td class="ns-table__cell ns-funnel__count"><%= step["n_fail"] %></td>
+              <td class="ns-table__cell ns-funnel__count"><%= step["n_missing"] %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% end %>

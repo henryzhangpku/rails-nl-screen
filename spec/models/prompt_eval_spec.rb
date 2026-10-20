@@ -22,16 +22,18 @@ RSpec.describe PromptEval do
   it "has expected outputs the rule-based parser agrees with" do
     described_class.cases.each do |c|
       expect(described_class.output_for(ScreenParser.parse(c["query"])))
-        .to eq(described_class.expected_output(c["expected"], unrecognized: c["unrecognized"])), c["query"]
+        .to eq(described_class.expected_output(c["expected"], not_screened: c["not_screened"])), c["query"]
     end
   end
 
   it "grades the accepted conditions, not the raw JSON" do
-    terse   = ScreenParser::Result.new([ { indicator: "rsi", timeframe: "daily", operator: "below", period: nil, value: 30 } ], [])
-    verbose = ScreenParser::Result.new([ { indicator: "rsi", timeframe: "daily", operator: "below", period: 14, value: 30.0 } ], [])
-    invalid = ScreenParser::Result.new(terse.conditions + [ { indicator: "rsi", timeframe: "daily", operator: "below", value: 900 } ], [])
+    terse   = ScreenParser::Result.new(conditions: [ { "field" => "rsi14", "op" => "<", "value" => 30 } ])
+    verbose = ScreenParser::Result.new(conditions: [ { "field" => "rsi14", "op" => "<", "value" => 30.0, "why" => "oversold" } ])
+    expect([ terse, verbose ].map { described_class.output_for(_1) }.uniq).to eq [ "Daily RSI (14) under 30" ]
 
-    expect([ terse, verbose, invalid ].map { described_class.output_for(_1) }.uniq).to eq [ "RSI(14) below 30" ]
+    # A refused condition isn't silently dropped: it's reported as not screened, which the grade sees.
+    invalid = ScreenParser::Result.new(conditions: terse.conditions + [ { "field" => "rsi14", "op" => "<", "value" => 900 } ])
+    expect(described_class.output_for(invalid)).to eq "Daily RSI (14) under 30\n(reports something as not screened)"
   end
 
   it "loads the cases into a PromptEngine eval set, idempotently, keeping past results" do

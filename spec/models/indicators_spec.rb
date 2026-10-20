@@ -20,12 +20,9 @@ RSpec.describe Indicators do
   end
 
   describe ".ema" do
-    it "is seeded with the SMA, then smoothed" do
-      expect(described_class.ema([ 1, 2, 3, 4, 5 ], 3)).to eq [ nil, nil, 2.0, 3.0, 4.0 ]
-    end
-
-    it "is all nil with too little data" do
-      expect(described_class.ema([ 1, 2 ], 3)).to eq [ nil, nil ]
+    it "is seeded with the first value, then smoothed (pandas ewm, adjust=False)" do
+      # k = 2 / (3 + 1) = 0.5: 1, 1.5, 2.25, 3.125
+      expect(described_class.ema([ 1, 2, 3, 4 ], 3)).to eq [ 1.0, 1.5, 2.25, 3.125 ]
     end
   end
 
@@ -38,8 +35,9 @@ RSpec.describe Indicators do
       end
     end
 
-    it "is 100 when price only rises" do
+    it "is 100 when price only rises, and 50 when it doesn't move" do
       expect(described_class.rsi((1..20).to_a, 14).last).to eq 100.0
+      expect(described_class.rsi([ 10 ] * 20, 14).last).to eq 50.0
     end
   end
 
@@ -47,39 +45,29 @@ RSpec.describe Indicators do
     let(:closes) { (1..60).map { |i| 100 + Math.sin(i / 5.0) * 10 } }
     subject(:macd) { described_class.macd(closes) }
 
-    it "is the fast EMA minus the slow EMA" do
+    it "is the fast EMA minus the slow EMA, from the first bar" do
       fast = described_class.ema(closes, 12)
       slow = described_class.ema(closes, 26)
-      expect(macd[:line][24]).to be_nil
+      expect(macd[:line][0]).to eq 0.0
       expect(macd[:line][40]).to be_within(1e-9).of(fast[40] - slow[40])
-    end
-
-    it "warms the signal line up after slow + signal - 1 bars" do
-      expect(macd[:signal][32]).to be_nil
-      expect(macd[:signal][33]).not_to be_nil
     end
 
     it "has a histogram of line minus signal" do
       expect(macd[:histogram][50]).to be_within(1e-9).of(macd[:line][50] - macd[:signal][50])
     end
-
-    it "is positive on a steady uptrend" do
-      expect(described_class.macd((1..60).map(&:to_f))[:line].last).to be_within(1e-9).of(7.0) # (26-12)/2 for a slope of 1
-    end
   end
 
-  describe ".bars_since_cross" do
-    let(:a) { [ 1, 1, 3, 3, 3 ] }
-    let(:b) { [ 2, 2, 2, 2, 2 ] }
+  it "computes momentum, volume ratio and drawdown like EquityScout" do
+    expect(described_class.momentum([ 100, 110, 121 ], 2)).to eq [ nil, nil, 121 / 100.0 - 1 ]
+    expect(described_class.volume_ratio([ 10, 20, 30, 40 ], 2)).to eq [ nil, nil, 2.0, 40 / 25.0 ] # today vs the prior 2
+    expect(described_class.drawdown_from_high([ 10, 20, 15 ], 2)).to eq [ nil, 0.0, -0.25 ]
+  end
 
-    it "finds the most recent cross within the window" do
-      expect(described_class.bars_since_cross(a, b, direction: :up, within: 3)).to eq 2
-      expect(described_class.bars_since_cross([ 3, 1 ], [ 2, 2 ], direction: :down, within: 1)).to eq 0
-    end
-
-    it "returns nil outside the window or in the other direction" do
-      expect(described_class.bars_since_cross(a, b, direction: :up, within: 2)).to be_nil
-      expect(described_class.bars_since_cross(a, b, direction: :down, within: 5)).to be_nil
+  describe ".crossed_above" do
+    it "is true only when the histogram goes from <= 0 to > 0 on the last bar" do
+      expect(described_class.crossed_above([ -1, 0, 0.5 ])).to be true
+      expect(described_class.crossed_above([ -1, 0.5, 1 ])).to be false
+      expect(described_class.crossed_above([ 0.5 ])).to be_nil
     end
   end
 end

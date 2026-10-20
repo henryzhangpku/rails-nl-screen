@@ -2,14 +2,19 @@ FactoryBot.define do
   factory :screen do
     query { "RSI under 30" }
     source { "rules" }
-    parser { "rules v1" }
+    parser { "rules v2" }
     status { "done" }
     universe_size { 100 }
     scanned_count { 100 }
 
-    # A screen must understand at least one condition to be valid.
+    # A screen must understand at least one condition to be valid; its spec follows from them.
     after(:build) do |screen|
       screen.conditions << build(:condition, screen: screen) if screen.conditions.empty?
+      if screen.spec.blank?
+        specs = screen.conditions.map(&:to_spec)
+        screen.spec = { "version" => 1, "observation" => screen.query, "universe" => {}, "conditions" => specs,
+                        "rank" => ScreenSpec.default_rank(specs), "top_n" => 5, "unmapped" => [], "notes" => "" }
+      end
     end
 
     trait :running do
@@ -34,18 +39,17 @@ FactoryBot.define do
 
   factory :condition do
     screen
-    indicator { "rsi" }
-    operator { "below" }
-    period { 14 }
+    field { "rsi14" }
+    op { "<" }
     value { 30 }
-    timeframe { "daily" }
   end
 
   factory :match do
     screen
     sequence(:symbol) { |n| "SYM#{n}" }
-    details { [ { "label" => "RSI(14) below 30", "observed" => "RSI(14) 25" } ] }
-    why { "RSI(14) 25 < 30" }
+    details { { "rsi14" => 25.0, "close" => 100.0, "avg_dollar_volume_50d" => 1e9 } }
+    why { "Daily RSI (14) under 30: 25" }
     score { 0.5 }
+    sequence(:rank) { |n| n }
   end
 end

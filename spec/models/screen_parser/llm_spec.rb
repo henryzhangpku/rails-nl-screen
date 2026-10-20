@@ -11,8 +11,10 @@ RSpec.describe ScreenParser::LLM do
     end
   end
   let(:proposal) do
-    { "conditions" => [ { "indicator" => "rsi", "timeframe" => "daily", "operator" => "below", "period" => 14, "value" => 30 } ],
-      "unrecognized" => [ "good vibes" ] }
+    { "conditions" => [ { "field" => "rsi14", "op" => "<", "value" => 30, "ref" => nil, "why" => "oversold" } ],
+      "rank" => [ { "field" => "rsi14", "direction" => "asc", "weight" => 1 } ],
+      "universe" => { "min_price" => 5, "sectors" => nil }, "top_n" => 3,
+      "unmapped" => [ { "text" => "good vibes", "reason" => "sentiment is not a field" } ], "notes" => "" }
   end
 
   it "asks for structured output constrained to the whitelist schema" do
@@ -21,14 +23,20 @@ RSpec.describe ScreenParser::LLM do
     expect(chat).to have_received(:with_instructions).with(described_class::SYSTEM_PROMPT)
     expect(chat).to have_received(:with_schema).with(described_class::SCHEMA)
     expect(chat).to have_received(:ask).with("RSI under 30, good vibes")
-    expect(described_class::SCHEMA.dig(:properties, :conditions, :items, :properties, :indicator, :enum))
-      .to eq Condition::SPECS.keys
+    expect(described_class::SCHEMA.dig(:properties, :conditions, :items, :properties, :field, :enum)).to eq ScreenSpec::FIELDS.keys
+    expect(described_class::SCHEMA.dig(:properties, :conditions, :items, :properties, :op, :enum)).to eq ScreenSpec::OPS
   end
 
-  it "returns the proposal as a parser result" do
+  it "returns the proposal as a parser result, nulls meaning 'not used'" do
     result = described_class.parse("RSI under 30, good vibes", chat: chat)
-    expect(result.conditions).to eq [ { indicator: "rsi", timeframe: "daily", operator: "below", period: 14, value: 30 } ]
-    expect(result.unrecognized).to eq [ "good vibes" ]
+    expect(result.conditions).to eq [ { "field" => "rsi14", "op" => "<", "value" => 30, "why" => "oversold" } ]
+    expect(result.unmapped).to eq [ { "text" => "good vibes", "reason" => "sentiment is not a field" } ]
+    expect(result).to have_attributes(rank: [ { "field" => "rsi14", "direction" => "asc", "weight" => 1 } ],
+                                      universe: { "min_price" => 5 }, top_n: 3)
+  end
+
+  it "describes the contract's fields and rules to the model" do
+    expect(described_class::SYSTEM_PROMPT).to include("drawdown_52w | ratio |", "macd_cross_up_w | bool |", "Ratios are decimals: 0.10 means 10%")
   end
 
   it "raises when the model stops early, so the caller falls back to the rules" do
@@ -116,20 +124,20 @@ RSpec.describe ScreenParser::LLM do
     end
   end
 
-  it "reads loosely shaped JSON defensively, leaving the rest to the Condition validations" do
-    loose = Struct.new(:finish_reason, :parsed).new(:stop, { "conditions" => [ { "indicator" => "rsi" }, "junk" ] })
+  it "reads loosely shaped JSON defensively, leaving the rest to the contract" do
+    loose = Struct.new(:finish_reason, :parsed).new(:stop, { "conditions" => [ { "field" => "rsi14" }, "junk" ] })
     allow(chat).to receive(:ask).and_return(loose)
 
     result = described_class.parse("RSI", chat: chat)
-    expect(result.conditions).to eq [ { indicator: "rsi" } ]
-    expect(result.unrecognized).to eq []
+    expect(result.conditions).to eq [ { "field" => "rsi14" }, "junk" ]
+    expect(result).to have_attributes(unmapped: [], rank: [], universe: {}, top_n: nil)
   end
 
   # A model can still reply outside the schema (not every provider enforces it).
-  # Whatever it sends, the screen ends with that condition dropped and noted, or
-  # parsed by the rules instead; never with an exception.
+  # Whatever it sends, the screen ends with that part not screened (with the reason),
+  # or parsed by the rules instead; never with an exception.
   describe "odd replies, through Screen.from_query" do
-    let(:good) { { "indicator" => "rsi", "timeframe" => "daily", "operator" => "below", "period" => 14, "value" => 30 } }
+    let(:good) { { "field" => "rsi14", "op" => "<", "value" => 30 } }
     let(:parser) do
       llm, chat = described_class, self.chat
       Module.new do
@@ -144,31 +152,31 @@ RSpec.describe ScreenParser::LLM do
     end
 
     {
-      "an array value"   => { "value" => [ 30 ] },
-      "an object period" => { "period" => {} }
-    }.each do |what, override|
-      it "drops a condition with #{what} and says why" do
-        screen = screen_for("conditions" => [ good.merge(override), good ], "unrecognized" => [])
+      "an object value"     => [ { "value" => {} }, /value must be a number/ ],
+      "a string value"      => [ { "value" => "30" }, /value must be a number/ ],
+      "a numeric field"     => [ { "field" => 5 }, /unknown field 5/ ],
+      "a value and a ref"   => [ { "ref" => "rsi14_w" }, /give exactly one of 'value'/ ],
+      "a percent, not a ratio" => [ { "field" => "drawdown_52w", "op" => "<=", "value" => -25 }, /looks like a percent/ ]
+    }.each do |what, (override, reason)|
+      it "refuses a condition with #{what} and says why" do
+        screen = screen_for("conditions" => [ good.merge(override), good ])
 
         expect(screen.source).to eq "llm"
-        expect(screen.conditions.map(&:label)).to eq [ "RSI(14) below 30" ]
-        expect(screen.notes).to contain_exactly(/\ADropped .*: #{override.keys.first} must be a number or text\z/)
+        expect(screen.conditions.map(&:label)).to eq [ "Daily RSI (14) under 30" ]
+        expect(screen.not_screened.map { _1["reason"] }).to contain_exactly(reason)
       end
     end
 
-    it "drops a numeric indicator through the Condition validations" do
-      screen = screen_for("conditions" => [ good.merge("indicator" => 5) ], "unrecognized" => [])
-
-      expect(screen.conditions).to be_empty
-      expect(screen.notes).to contain_exactly(/\ADropped 5 .*Indicator is not included in the list/)
-      expect(screen).not_to be_valid
+    it "refuses a condition that isn't an object" do
+      screen = screen_for("conditions" => [ "rsi < 30", good ])
+      expect(screen.not_screened.first["reason"]).to eq "conditions[0] must be an object"
     end
 
     it "falls back to the rules when conditions is not an array" do
-      screen = screen_for("conditions" => "x", "unrecognized" => [])
+      screen = screen_for("conditions" => "x")
 
-      expect(screen).to have_attributes(source: "rules", parser: "rules v1")
-      expect(screen.conditions.map(&:label)).to eq [ "RSI(14) below 30" ]
+      expect(screen).to have_attributes(source: "rules", parser: "rules v2")
+      expect(screen.conditions.map(&:label)).to eq [ "Daily RSI (14) under 30" ]
       expect(screen.notes).to contain_exactly(/MalformedResponse/)
     end
 

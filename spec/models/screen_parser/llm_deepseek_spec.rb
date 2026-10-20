@@ -5,8 +5,9 @@ require "rails_helper"
 # or a network call.
 RSpec.describe ScreenParser::LLM, "with DeepSeek" do
   let(:proposal) do
-    { conditions: [ { indicator: "rsi", timeframe: "daily", operator: "below", period: 14, value: 30 } ],
-      unrecognized: [ "good vibes" ] }.to_json
+    { conditions: [ { field: "rsi14", op: "<", value: 30, ref: nil, why: "oversold" } ],
+      rank: [ { field: "rsi14", direction: "asc", weight: 1 } ], universe: {}, top_n: 5,
+      unmapped: [ { text: "good vibes", reason: "sentiment is not a field" } ], notes: "" }.to_json
   end
 
   around do |example|
@@ -22,8 +23,8 @@ RSpec.describe ScreenParser::LLM, "with DeepSeek" do
 
   def expect_parsed(screen)
     expect(screen).to have_attributes(source: "llm", parser: start_with("deepseek-v4-flash, prompt "))
-    expect(screen.conditions.map(&:label)).to eq [ "RSI(14) below 30" ]
-    expect(screen.notes.join).to include("good vibes")
+    expect(screen.conditions.map(&:label)).to eq [ "Daily RSI (14) under 30" ]
+    expect(screen.not_screened).to eq [ { "text" => "good vibes", "reason" => "sentiment is not a field" } ]
   end
 
   it "uses DeepSeek's Responses API, which takes the JSON schema" do
@@ -41,7 +42,7 @@ RSpec.describe ScreenParser::LLM, "with DeepSeek" do
       format = body.dig("text", "format")
       body["model"] == "deepseek-v4-flash" &&
         format["type"] == "json_schema" &&
-        format.dig("schema", "properties", "conditions", "items", "properties", "indicator", "enum") == Condition::SPECS.keys &&
+        format.dig("schema", "properties", "conditions", "items", "properties", "field", "enum") == ScreenSpec::FIELDS.keys &&
         request.body.include?("RSI under 30, good vibes") &&
         request.headers["Authorization"] == "Bearer sk-test"
     end)
@@ -61,7 +62,7 @@ RSpec.describe ScreenParser::LLM, "with DeepSeek" do
     expect(WebMock).to(have_requested(:post, "https://api.deepseek.com/chat/completions").with do |request|
       body = JSON.parse(request.body)
       body["response_format"] == { "type" => "json_object" } &&
-        body["messages"].first["content"].include?("Reply with only a JSON object")
+        body["messages"].first["content"].include?("Reply with only the JSON object")
     end)
   end
 end

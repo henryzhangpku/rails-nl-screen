@@ -1,7 +1,10 @@
 <section class="ns-stack">
   <div>
     <h2>Ranked results</h2>
-    <p class="ns-text--muted">Score = how far past each threshold, averaged (0 to 1). A fresher MACD cross scores higher.</p>
+    <p class="ns-text--muted">
+      Ranked by <%= screen.spec.fetch("rank", []).map { |r| "#{ScreenSpec.label(r["field"])} (#{r["direction"] == "desc" ? "highest" : "lowest"} first)" }.to_sentence %>.
+      Score = weighted mean of percentile ranks among the matches (0 to 1); ties go to the more liquid name. Top <%= screen.top_n %> highlighted.
+    </p>
   </div>
   <div class="ns-table-wrap">
     <table class="ns-table">
@@ -10,8 +13,8 @@
           <th class="ns-table__head">#</th>
           <th class="ns-table__head">Ticker</th>
           <th class="ns-table__head">Score</th>
-          <% screen.conditions.each do |condition| %>
-            <th class="ns-table__head ns-table__head--condition"><%= condition.label %></th>
+          <% screen.table_fields.each do |field| %>
+            <th class="ns-table__head ns-table__head--condition"><%= ScreenSpec.label(field) %></th>
           <% end %>
           <th class="ns-table__head">Why it matched</th>
         </tr>

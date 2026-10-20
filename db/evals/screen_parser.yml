@@ -1,24 +1,35 @@
-# Eval cases for the screen parser's prompt, loaded into PromptEngine by db/seeds.rb.
-# `expected` is what the code must end up *accepting*: Condition labels after defaults
-# and validation, so "RSI under 30" and {"period": null} both grade as "RSI(14) below 30".
-# `unrecognized: true` means part of the query must be reported back, not guessed.
+# Eval cases for the screen parser's prompt (the Screen::EXAMPLES, then edge cases), loaded into
+# PromptEngine by db/seeds.rb.
+# `expected` is what the code must end up *accepting*: the plain-English wording of each
+# condition that passes the screen-spec contract (ScreenSpec), so "rsi14 < 30" and
+# "rsi14 < 30.0" both grade as "Daily RSI (14) under 30".
+# `not_screened: true` means part of the query must be reported as not screened, with a
+# reason, never guessed or approximated.
 # spec/models/prompt_eval_spec.rb checks that the rule-based parser passes every case.
-- query: RSI(14) under 30 on the daily, MACD crossing up, volume above its 20-day average, price above the 200-day moving average
-  expected: [MACD crosses above signal, Price above SMA(200), RSI(14) below 30, Volume above 1x its 20-bar average]
-- query: within 5% of the 52-week high, price above the 50-day EMA, volume 1.5x its 20-day average
-  expected: [Drawdown from 52-week high below 5%, Price above EMA(50), Volume above 1.5x its 20-bar average]
+- query: RSI under 40, price above the 200-day moving average
+  expected: [Daily RSI (14) under 40, Price above its 200-day average]
+- query: within 5% of the 52-week high, price above the 50-day average, volume 1.5x its 50-day average
+  expected: [Price above its 50-day average, Volume at least 1.5× its 50-day average, Within 5% of 52-week high]
+- query: golden cross, up over the last 3 months, weekly RSI above 60
+  expected: [50-day average above 200-day average (uptrend), Price up over 3 months, RSI (14-week) > 60]
 - query: down at least 20% from the 52-week high, RSI under 40, price between $20 and $200
-  expected: [Drawdown from 52-week high above 20%, Price above $20, Price below $200, RSI(14) below 40]
-- query: weekly RSI above 60 and price above the 30-week moving average on the weekly
-  expected: [Price above SMA(30) (weekly), RSI(14) above 60 (weekly)]
-- query: MACD crossing up, price above the 200-day moving average
-  expected: [MACD crosses above signal, Price above SMA(200)]
+  expected: [Daily RSI (14) under 40, Down at least 20% from 52-week high, Price between $20 and $200]
+- query: MACD above its signal, volume above its 20-day average, price above the 50-day average
+  expected: [MACD minus signal > 0, Price above its 50-day average, Volume above its 20-day average]
+- query: RSI under 30 on the daily, MACD crossing above its signal on the weekly, volume above its 20-day average
+  expected: [Daily RSI (14) under 30, Volume above its 20-day average, Weekly MACD crossed above its signal this week]
+- query: RSI(14) under 30, price above the 200-day moving average
+  expected: [Daily RSI (14) under 30, Price above its 200-day average]
 - query: oversold with volume 2x its 50-day average
-  expected: [RSI(14) below 30, Volume above 2x its 50-bar average]
+  expected: [Daily RSI (14) under 30, Volume at least 2× its 50-day average]
 - query: price between $20 and $100 and within 5% of the 52-week high
-  expected: [Drawdown from 52-week high below 5%, Price above $20, Price below $100]
+  expected: [Price between $20 and $100, Within 5% of 52-week high]
 - query: below the 21 day EMA, MACD bearish cross
-  expected: [MACD crosses below signal, Price below EMA(21)]
+  expected: []
+  not_screened: true
 - query: RSI under 30 and good vibes
-  expected: [RSI(14) below 30]
-  unrecognized: true
+  expected: [Daily RSI (14) under 30]
+  not_screened: true
+- query: profitable companies with RSI under 30
+  expected: [Daily RSI (14) under 30]
+  not_screened: true

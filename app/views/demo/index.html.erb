@@ -3,7 +3,7 @@
 <section class="ns-stack">
   <span class="ns-text--eyebrow">Plain English in, ranked stocks out</span>
   <h1>Type a stock screen the way you'd say it.</h1>
-  <p class="ns-text--lede">Each query below was parsed into typed, whitelisted conditions, run over 100 large US stocks, and the survivors ranked by how decisively they pass.</p>
+  <p class="ns-text--lede">Each query below was parsed into a screen spec (the same contract as EquityScout, its Python sibling), run over 100 large US stocks through a funnel, and the survivors ranked.</p>
 </section>
 
 <section class="ns-cards">
@@ -12,7 +12,7 @@
       <span class="ns-card__query"><%= screen.query %></span>
       <ul class="ns-chips">
         <% screen.conditions.each do |condition| %>
-          <li class="ns-chip"><%= condition.label.delete_suffix(" (weekly)") %><% if condition.timeframe == "weekly" %><span class="ns-chip__timeframe">wk</span><% end %></li>
+          <li class="ns-chip"><%= condition.label %></li>
         <% end %>
       </ul>
       <span class="ns-card__count <%= "ns-card__count--zero" if screen.matches.empty? %>"><b class="ns-card__count-value"><%= screen.matches.size %></b><span class="ns-text--muted">of <%= screen.universe_size %> matched</span></span>

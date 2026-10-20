@@ -22,3 +22,8 @@
   margin: 0.5rem 0 0; padding: 0.75rem; font-size: 0.78rem; overflow-x: auto;
   background: var(--ns-surface); border: 1px solid var(--ns-rule); border-radius: 6px;
 }
+
+.ns-unmapped { border: 1px dashed var(--ns-rule); border-radius: 6px; padding: 0.7rem 0.9rem; background: var(--ns-surface); }
+.ns-unmapped__title { margin: 0 0 0.35rem; font: 600 0.72rem/1.2 var(--ns-font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ns-ink-2); }
+.ns-unmapped__list { margin: 0; padding-left: 1.1rem; font-size: 0.88rem; color: var(--ns-ink-2); }
+.ns-unmapped__text { font-family: var(--ns-font-mono); color: var(--ns-ink); overflow-wrap: anywhere; }

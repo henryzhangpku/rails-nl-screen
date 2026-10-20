@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_20_070932) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_20_074712) do
   create_table "bars", force: :cascade do |t|
     t.string "symbol", null: false
     t.date "date", null: false
@@ -26,25 +26,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_20_070932) do
 
   create_table "conditions", force: :cascade do |t|
     t.integer "screen_id", null: false
-    t.string "indicator", null: false
-    t.string "timeframe", default: "daily", null: false
-    t.string "operator", null: false
-    t.integer "period"
-    t.float "value"
     t.integer "position", default: 0, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "field", null: false
+    t.string "op", null: false
+    t.string "ref"
+    t.json "value"
     t.index ["screen_id"], name: "index_conditions_on_screen_id"
   end
 
   create_table "matches", force: :cascade do |t|
     t.integer "screen_id", null: false
     t.string "symbol", null: false
-    t.json "details", default: [], null: false
+    t.json "details", default: {}, null: false
     t.string "why", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.float "score", default: 0.0, null: false
+    t.integer "rank"
     t.index ["screen_id", "symbol"], name: "index_matches_on_screen_id_and_symbol", unique: true
   end
 
@@ -198,6 +198,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_20_070932) do
     t.json "proposal", default: {}, null: false
     t.string "parser"
     t.integer "matches_count", default: 0, null: false
+    t.json "spec", default: {}, null: false
+    t.json "funnel", default: [], null: false
   end
 
   create_table "sessions", force: :cascade do |t|

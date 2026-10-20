@@ -18,13 +18,19 @@ RSpec.describe "Screens", type: :request do
       follow_redirect!
       page = Nokogiri::HTML(response.body)
       expect(page.at("h1").text).to eq "Here's what I understood"
-      expect(page.css(".ns-chip").map(&:text)).to eq [ "RSI(14) below 30", "Price above SMA(200)" ]
+      expect(page.css(".ns-chip").map(&:text)).to eq [ "Daily RSI (14) under 30", "Price above its 200-day average" ]
     end
 
     it "re-renders the form when nothing was understood" do
       post screens_path, params: { screen: { query: "blah" } }
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include("couldn&#39;t turn that")
+    end
+
+    it "says why when what was understood can't be screened here" do
+      post screens_path, params: { screen: { query: "price above the 21-day EMA" } }
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include("there is no EMA field")
     end
 
     it "is rate limited to 10 a minute per IP" do

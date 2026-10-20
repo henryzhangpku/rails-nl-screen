@@ -1,11 +1,15 @@
-<tr id="<%= dom_id(match) %>">
-  <td class="ns-table__cell ns-table__cell--rank"><%= (match_counter + 1 if local_assigns[:match_counter]) %></td>
+<tr id="<%= dom_id(match) %>" class="<%= "ns-table__row--top" if match.rank && match.rank <= match.screen.top_n %>">
+  <td class="ns-table__cell ns-table__cell--rank"><%= match.rank || "–" %></td>
   <th class="ns-table__cell ns-table__cell--ticker"><%= match.symbol %></th>
   <td class="ns-table__cell">
-    <span class="ns-score"><%= number_with_precision(match.score, precision: 2) %><span class="ns-score__bar"><span class="ns-score__fill" style="--ns-score: <%= (match.score * 100).round %>%"></span></span></span>
+    <% if match.rank %>
+      <span class="ns-score"><%= number_with_precision(match.score, precision: 2) %><span class="ns-score__bar"><span class="ns-score__fill" style="--ns-score: <%= (match.score * 100).round %>%"></span></span></span>
+    <% else %>
+      <span class="ns-text--muted">ranked when done</span>
+    <% end %>
   </td>
-  <% match.details.each do |detail| %>
-    <td class="ns-table__cell ns-table__cell--number"><%= detail["observed"] %></td>
+  <% match.screen.table_fields.each do |field| %>
+    <td class="ns-table__cell ns-table__cell--number"><%= match.details.key?(field) ? ScreenSpec.plain_value(field, match.details[field]) : "–" %></td>
   <% end %>
   <td class="ns-table__cell ns-table__cell--why"><%= match.why %></td>
 </tr>

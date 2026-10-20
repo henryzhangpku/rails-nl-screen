@@ -1,6 +1,6 @@
-# Optional: ask an LLM to *propose* the typed screen as JSON. The proposal goes
-# through exactly the same Condition validations as the rule-based parser, so
-# the model can suggest but only code decides.
+# Optional: ask an LLM to *propose* the screen spec as JSON (the contract shared with
+# EquityScout, see ScreenSpec). The proposal goes through exactly the same checks as
+# the rule-based parser's, so the model can suggest but only code decides.
 #
 # Any provider RubyLLM supports works: the provider follows from the model name
 # (deepseek-* -> DeepSeek, gpt-* -> OpenAI, gemini-* -> Gemini, ...).
@@ -14,43 +14,91 @@ module ScreenParser::LLM
   class IncompleteResponse < Error; end # the model stopped before finishing (length, content filter, ...)
   class MalformedResponse < Error; end  # no conditions array in the reply
 
+  NULLABLE_NUMBER = { anyOf: [ { type: "number" }, { type: "null" } ] }.freeze
+
+  # The screen spec as a JSON schema (strict-mode friendly: every key present, null for
+  # "not used"). Field and operator enums come from ScreenSpec, so the model can only
+  # name whitelisted fields; ScreenSpec still validates every value it sends.
   SCHEMA = {
     type: "object",
     additionalProperties: false,
-    required: %w[conditions unrecognized],
+    required: %w[conditions rank universe top_n unmapped notes],
     properties: {
       conditions: {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
-          required: %w[indicator timeframe operator period value],
+          required: %w[field op value ref why],
           properties: {
-            indicator: { type: "string", enum: Condition::SPECS.keys },
-            timeframe: { type: "string", enum: Condition::TIMEFRAMES },
-            operator:  { type: "string", enum: Condition::SPECS.values.flat_map { |s| s[:operators] }.uniq },
-            period:    { anyOf: [ { type: "integer" }, { type: "null" } ] },
-            value:     { anyOf: [ { type: "number" }, { type: "null" } ] }
+            field: { type: "string", enum: ScreenSpec::FIELDS.keys },
+            op:    { type: "string", enum: ScreenSpec::OPS },
+            value: { anyOf: [ { type: "number" }, { type: "boolean" }, { type: "array", items: { type: "number" } }, { type: "null" } ] },
+            ref:   { anyOf: [ { type: "string", enum: ScreenSpec::FIELDS.keys }, { type: "null" } ] },
+            why:   { type: "string" }
           }
         }
       },
-      unrecognized: { type: "array", items: { type: "string" } }
+      rank: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: %w[field direction weight],
+          properties: {
+            field: { type: "string", enum: ScreenSpec::FIELDS.keys },
+            direction: { type: "string", enum: %w[asc desc] },
+            weight: { type: "number" }
+          }
+        }
+      },
+      universe: {
+        type: "object",
+        additionalProperties: false,
+        required: ScreenSpec::UNIVERSE_KEYS,
+        properties: ScreenSpec::UNIVERSE_KEYS.to_h do |key|
+          [ key, key.match?(/sectors|groups|industries|themes/) ? { anyOf: [ { type: "array", items: { type: "string" } }, { type: "null" } ] } : NULLABLE_NUMBER ]
+        end
+      },
+      top_n: { type: "integer" },
+      unmapped: {
+        type: "array",
+        items: {
+          type: "object", additionalProperties: false, required: %w[text reason],
+          properties: { text: { type: "string" }, reason: { type: "string" } }
+        }
+      },
+      notes: { type: "string" }
     }
   }.freeze
 
+  # EquityScout's prompt (schema_for_prompt there), from the same field list.
   SYSTEM_PROMPT = <<~PROMPT
-    You translate a plain-English stock screen into typed conditions.
-    Allowed indicators and their meaning:
-    - rsi: RSI(period) compared to value (0-100). operators: below, above. Default period 14.
-    - macd: MACD(12,26,9) line crossing its signal line. operators: crosses_up, crosses_down. period and value null.
-    - sma / ema: latest close compared to the moving average of `period` bars. operators: above, below. value null.
-    - volume: latest volume vs `value` times its `period`-bar average (value 1 = just the average). operators: above, below.
-    - drawdown: percent below the 52-week high (value 0-100). "within 10% of the high" = below 10; "down 20% or more" = above 20.
-    - price: latest close in dollars. operators: above, below. A range becomes two conditions.
-    timeframe is "daily" unless the user asks for weekly.
-    Put any part of the request you cannot express with these into `unrecognized`, verbatim. Never invent conditions.
-    Reply with only a JSON object: {"conditions": [{"indicator", "timeframe", "operator", "period", "value"}], "unrecognized": ["..."]}.
+    You translate a plain-English stock screen into a screen spec. Fill the JSON spec; code validates
+    every field, operator, unit and threshold against a whitelist and refuses anything else.
+
+    FIELDS (name | kind | meaning):
+    #{ScreenSpec::FIELDS.values.reject { _1.name.start_with?("rs_") }.map { "  #{_1.name} | #{_1.kind} | #{_1.desc}" }.join("\n")}
+      rs_{1,3,6,12}m_vs_{#{ScreenSpec::BENCHMARKS.keys.join(",")}} | ratio | relative return vs that benchmark ETF
+
+    RULES:
+    - A condition is {field, op, value, ref, why}: op is one of #{ScreenSpec::OPS.join(" ")}; give a number `value`
+      (a [low, high] pair for between, true/false with == for boolean fields) OR a `ref` field to compare with; the other is null.
+    - Ratios are decimals: 0.10 means 10%. "20% below the 52-week high" -> drawdown_52w <= -0.20;
+      "within 5% of the high" -> drawdown_52w >= -0.05. Money is in US dollars.
+    - Fields ending in _w use weekly closes; every other technical field uses daily bars. "MACD crossing above its
+      signal" -> macd_cross_up == true (daily) or macd_cross_up_w == true (weekly); "MACD above its signal" -> macd_hist > 0;
+      "volume above its 20-day average" -> volume_ratio_20d > 1; "price above the 200-day average" -> close > ref sma200.
+    - rank: 1-3 {field, direction, weight} entries that order the survivors (e.g. rsi14 asc for "most oversold").
+    - universe: only the keys the user asked for; null for the rest. top_n: 1-#{ScreenSpec::MAX_TOP_N}, default #{ScreenSpec::DEFAULT_TOP_N}.
+    - Anything the fields cannot express (analyst ratings, guidance, sentiment, an EMA, a MACD cross down) goes in
+      `unmapped` as {text, reason}. Never invent a condition or approximate one.
+    Reply with only the JSON object.
   PROMPT
+
+  # Stored with the prompt in PromptEngine, so the seeds can tell a prompt written for an
+  # older contract and replace it (as a new version).
+  CONTRACT = "screen-spec v#{ScreenSpec::VERSION}"
 
   # The prompt is data: PromptEngine stores it in the record with slug "screen-parser" and keeps
   # every edit as a numbered version (edit it at /prompts once signed in). If that
@@ -120,12 +168,18 @@ module ScreenParser::LLM
 
     # Not every provider/protocol enforces SCHEMA (DeepSeek's chat completions only promise
     # *a* JSON object), so read it defensively. No conditions array means no usable reply;
-    # otherwise Screen.from_query type-checks each condition and Condition validates it,
-    # while the raw proposal is kept for the audit view.
+    # otherwise Screen#adopt checks every part against the contract, while the raw
+    # proposal is kept for the audit view. Nulls mean "not used", so they're dropped.
     json = response.parsed.is_a?(Hash) ? response.parsed : {}
     conditions = json["conditions"]
     raise MalformedResponse, "#{request.model} replied without a conditions array" unless conditions.is_a?(Array)
 
-    ScreenParser::Result.new(conditions.grep(Hash).map(&:symbolize_keys), Array(json["unrecognized"]).map(&:to_s))
+    ScreenParser::Result.new(
+      conditions: conditions.map { _1.is_a?(Hash) ? _1.compact : _1 },
+      unmapped: Array(json["unmapped"]),
+      rank: Array(json["rank"]),
+      universe: json["universe"].is_a?(Hash) ? json["universe"].compact : {},
+      top_n: json["top_n"]
+    )
   end
 end
