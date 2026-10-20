@@ -24,7 +24,7 @@ class Screen < ApplicationRecord
   has_many :matches, -> { order(score: :desc, id: :asc) }, dependent: :destroy # ranked, strongest first
 
   enum :status, %w[pending running done failed].index_by(&:itself)
-  SOURCES = %w[rules claude].freeze
+  SOURCES = %w[rules llm].freeze
 
   # History filters. Each scope ignores a blank argument, so the controller can chain them.
   scope :matching, ->(text) { where("query LIKE ?", "%#{sanitize_sql_like(text)}%") if text.present? }
@@ -51,10 +51,10 @@ class Screen < ApplicationRecord
     "MACD crossing up, price above the 200-day moving average"
   ].freeze
 
-  # Parse `query` into an unsaved Screen. Claude proposes when configured;
+  # Parse `query` into an unsaved Screen. An LLM proposes when configured;
   # otherwise (or if it fails) the rule-based parser does. Either way each
   # proposed condition must pass Condition's validations to be kept.
-  def self.from_query(query, parser: ScreenParser::Claude.enabled? ? ScreenParser::Claude : ScreenParser)
+  def self.from_query(query, parser: ScreenParser::LLM.enabled? ? ScreenParser::LLM : ScreenParser)
     screen = new(query: query.to_s.strip)
     proposal = screen.propose_with(parser)
     proposal.conditions.each do |attrs|
@@ -70,11 +70,11 @@ class Screen < ApplicationRecord
   end
 
   def propose_with(parser)
-    self.source = parser == ScreenParser ? "rules" : "claude"
+    self.source = parser == ScreenParser ? "rules" : "llm"
     record_proposal(parser, parser.parse(query))
   rescue => e
     Rails.logger.warn("#{parser} failed: #{e.class}: #{e.message}")
-    notes << "Claude was unavailable (#{e.class.name.demodulize}), so the rule-based parser was used"
+    notes << "The LLM was unavailable (#{e.class.name.demodulize}), so the rule-based parser was used"
     self.source = "rules"
     record_proposal(ScreenParser, ScreenParser.parse(query))
   end

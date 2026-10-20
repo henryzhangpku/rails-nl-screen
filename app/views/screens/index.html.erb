@@ -13,7 +13,7 @@
         aria: { label: "Search queries" }, data: { action: "input->filter#submitLater" } %>
   <%= form.select :status, Screen.statuses.keys.map { |s| [ s.humanize, s ] }, { include_blank: "Any status", selected: params[:status] },
         class: "ns-filters__select", aria: { label: "Status" }, data: { action: "change->filter#submit" } %>
-  <%= form.select :source, Screen::SOURCES.map { |s| [ s == "claude" ? "Claude" : "Rules", s ] }, { include_blank: "Any parser", selected: params[:source] },
+  <%= form.select :source, Screen::SOURCES.map { |s| [ s == "llm" ? "LLM" : "Rules", s ] }, { include_blank: "Any parser", selected: params[:source] },
         class: "ns-filters__select", aria: { label: "Parser" }, data: { action: "change->filter#submit" } %>
   <label class="ns-filters__check">
     <%= form.check_box :with_matches, { checked: params[:with_matches].present?, data: { action: "change->filter#submit" } }, "1", nil %>

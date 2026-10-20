@@ -1,6 +1,9 @@
 # This file is copied to spec/ when you run 'rails generate rspec:install'
 require 'spec_helper'
 ENV['RAILS_ENV'] ||= 'test'
+# Tests never call a real LLM API; the rule-based parser is the default. Cleared
+# before boot, because config/initializers/ruby_llm.rb reads the keys at startup.
+ENV.keys.grep(/\A(\w+_API_KEY|SCREEN_PARSER_\w+)\z/).each { |key| ENV.delete(key) }
 require_relative '../config/environment'
 # Prevent database truncation if the environment is production
 abort("The Rails environment is running in production mode!") if Rails.env.production?
@@ -8,9 +11,6 @@ abort("The Rails environment is running in production mode!") if Rails.env.produ
 # that will avoid rails generators crashing because migrations haven't been run yet
 # return unless Rails.env.test?
 require 'rspec/rails'
-
-# Tests never call the real Claude API; the rule-based parser is the default.
-ENV.delete("ANTHROPIC_API_KEY")
 
 Rails.root.glob("spec/support/**/*.rb").sort.each { |f| require f }
 # Add additional requires below this line. Rails is not loaded until this point!

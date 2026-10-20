@@ -3,7 +3,7 @@
 # can show pass rates, compare runs and chart them by version.
 #
 # PromptEngine's own runner sends evals to OpenAI's Evals API and grades by exact
-# string match. This one calls Claude through the same code path as a real screen
+# string match. This one calls the prompt's model (any RubyLLM provider) through the same code path as a real screen
 # and grades what the code *accepts* (see .expected_output), so formatting
 # differences in the model's JSON don't count as failures.
 class PromptEval
@@ -59,7 +59,7 @@ class PromptEval
   private
     def grade(eval_run, test_case)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      result = ScreenParser::Claude.parse(test_case.input_variables["query"], version: @version, chat: @chat)
+      result = ScreenParser::LLM.parse(test_case.input_variables["query"], version: @version, chat: @chat)
       output = self.class.output_for(result)
       record(eval_run, test_case, started, actual_output: output, passed: output == test_case.expected_output)
     rescue => e

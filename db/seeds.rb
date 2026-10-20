@@ -1,13 +1,13 @@
 # Idempotent: bin/setup runs this once when it creates the database; rerun any time with bin/rails db:seed.
 
-# The Claude screen parser's prompt, as a PromptEngine record. Editing it at /prompts
+# The LLM screen parser's prompt, as a PromptEngine record. Editing it at /prompts
 # creates a new numbered version; screens record which version parsed them.
-prompt = PromptEngine::Prompt.find_or_create_by!(slug: ScreenParser::Claude::PROMPT_NAME) do |prompt|
-  prompt.name = ScreenParser::Claude::PROMPT_NAME
+prompt = PromptEngine::Prompt.find_or_create_by!(slug: ScreenParser::LLM::PROMPT_NAME) do |prompt|
+  prompt.name = ScreenParser::LLM::PROMPT_NAME
   prompt.description = "Turns a plain-English stock screen into whitelisted, typed conditions (JSON schema enforced in code)."
-  prompt.system_message = ScreenParser::Claude::SYSTEM_PROMPT
+  prompt.system_message = ScreenParser::LLM::SYSTEM_PROMPT
   prompt.content = "{{query}}"
-  prompt.model = ScreenParser::Claude::MODEL
+  prompt.model = ScreenParser::LLM::MODEL
   prompt.status = "active"
 end
 

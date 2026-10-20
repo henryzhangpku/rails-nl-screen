@@ -3,7 +3,7 @@
 <section class="ns-stack ns-signin">
   <span class="ns-text--eyebrow">Admin</span>
   <h1>Sign in to edit prompts</h1>
-  <p class="ns-text--lede">The screen parser's Claude prompt lives in PromptEngine as versioned data. Screens themselves need no account.</p>
+  <p class="ns-text--lede">The screen parser's LLM prompt lives in PromptEngine as versioned data. Screens themselves need no account.</p>
 
   <%= form_with url: session_path, class: "ns-signin__form" do |form| %>
     <% if flash[:alert] %><p class="ns-compose__error" role="alert"><%= flash[:alert] %></p><% end %>

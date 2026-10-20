@@ -5,7 +5,7 @@
     <%= link_to screen.query, screen, class: "ns-history__link", data: { turbo_frame: "_top" }, style: "view-transition-name: #{dom_id(screen)}" %>
   </td>
   <td class="ns-table__cell"><span class="ns-status ns-status--<%= screen.status %>"><%= screen.status.humanize %></span></td>
-  <td class="ns-table__cell ns-text--muted"><%= screen.source == "claude" ? "Claude" : "Rules" %></td>
+  <td class="ns-table__cell ns-text--muted"><%= screen.source == "llm" ? "LLM" : "Rules" %></td>
   <td class="ns-table__cell ns-table__cell--number"><%= screen.matches_count %></td>
   <td class="ns-table__cell">
     <%= button_to "Delete", screen, method: :delete, class: "ns-history__delete",

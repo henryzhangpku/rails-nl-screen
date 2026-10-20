@@ -14,3 +14,8 @@
 # ActiveSupport::Inflector.inflections(:en) do |inflect|
 #   inflect.acronym "RESTful"
 # end
+
+# app/models/screen_parser/llm.rb defines ScreenParser::LLM. A Zeitwerk-only rule for
+# that one file name: a global `inflect.acronym "LLM"` would also rename other
+# constants, e.g. an engine's RubyLlmEvaluationRunner.
+Rails.autoloaders.main.inflector.inflect("llm" => "LLM")

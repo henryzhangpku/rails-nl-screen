@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_20_053644) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_20_055552) do
   create_table "bars", force: :cascade do |t|
     t.string "symbol", null: false
     t.date "date", null: false

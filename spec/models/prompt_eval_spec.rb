@@ -2,8 +2,8 @@ require "rails_helper"
 
 RSpec.describe PromptEval do
   let(:prompt) do
-    PromptEngine::Prompt.create!(name: ScreenParser::Claude::PROMPT_NAME, status: "active", model: ScreenParser::Claude::MODEL,
-                                 system_message: ScreenParser::Claude::SYSTEM_PROMPT, content: "{{query}}")
+    PromptEngine::Prompt.create!(name: ScreenParser::LLM::PROMPT_NAME, status: "active", model: ScreenParser::LLM::MODEL,
+                                 system_message: ScreenParser::LLM::SYSTEM_PROMPT, content: "{{query}}")
   end
   let(:eval_set) { described_class.load_set(prompt) }
 
@@ -56,7 +56,7 @@ RSpec.describe PromptEval do
     prompt.update!(system_message: "A rewritten prompt")
 
     described_class.new(eval_set, version: v1, chat: chat).run
-    expect(chat).to have_received(:with_instructions).with(ScreenParser::Claude::SYSTEM_PROMPT).at_least(:once)
+    expect(chat).to have_received(:with_instructions).with(ScreenParser::LLM::SYSTEM_PROMPT).at_least(:once)
     expect(chat).not_to have_received(:with_instructions).with("A rewritten prompt")
   end
 

@@ -1,6 +1,6 @@
 # One typed, whitelisted rule of a Screen, e.g. "RSI(14) below 30 on the daily".
 #
-# SPECS is the whitelist: whatever the parser (or Claude) proposes must fit it,
+# SPECS is the whitelist: whatever the parser (or an LLM) proposes must fit it,
 # or validation fails and the condition is dropped.
 # == Schema Information
 #

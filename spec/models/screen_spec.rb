@@ -44,7 +44,7 @@ RSpec.describe Screen do
 
     it "lets Claude only propose: invalid conditions are dropped and reported" do
       screen = described_class.from_query("anything", parser: fake_claude)
-      expect(screen).to have_attributes(source: "claude", parser: "fake-claude")
+      expect(screen).to have_attributes(source: "llm", parser: "fake-claude")
       expect(screen.conditions.map(&:label)).to eq [ "RSI(14) above 50" ]
       expect(screen.notes.size).to eq 3
       expect(screen.notes.first).to match(/Dropped rsi above 500/)

@@ -1,9 +1,9 @@
 namespace :prompts do
-  desc "Run the screen parser's eval set against a prompt version (VERSION=n, default: current). Needs ANTHROPIC_API_KEY."
+  desc "Run the screen parser's eval set against a prompt version (VERSION=n, default: current). Needs the API key for the model's provider."
   task eval: :environment do
-    abort "Set ANTHROPIC_API_KEY: the evals call Claude." unless ScreenParser::Claude.enabled?
+    abort "Set the API key for #{ScreenParser::LLM.request_for("").model} (e.g. ANTHROPIC_API_KEY, DEEPSEEK_API_KEY): the evals call it." unless ScreenParser::LLM.enabled?
 
-    prompt = PromptEngine::Prompt.find_by!(slug: ScreenParser::Claude::PROMPT_NAME)
+    prompt = PromptEngine::Prompt.find_by!(slug: ScreenParser::LLM::PROMPT_NAME)
     version = ENV["VERSION"] ? prompt.versions.find_by!(version_number: ENV["VERSION"]) : prompt.current_version
     eval_run = PromptEval.new(PromptEval.load_set(prompt), version: version).run
 

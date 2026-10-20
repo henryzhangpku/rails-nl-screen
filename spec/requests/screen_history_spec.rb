@@ -28,14 +28,14 @@ RSpec.describe "Screen history", type: :request do
     it "filters by status, parser and whether there are matches" do
       create(:screen, query: "done, rules, none")
       create(:screen, :running, query: "running")
-      create(:screen, :from_claude, query: "claude")
+      create(:screen, :from_llm, query: "llm")
       create(:screen, :with_matches, query: "has matches")
 
       get screens_path(status: "running")
       expect(queries).to eq [ "running" ]
 
-      get screens_path(source: "claude")
-      expect(queries).to eq [ "claude" ]
+      get screens_path(source: "llm")
+      expect(queries).to eq [ "llm" ]
 
       get screens_path(with_matches: "1")
       expect(queries).to eq [ "has matches" ]

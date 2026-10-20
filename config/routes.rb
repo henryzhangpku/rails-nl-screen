@@ -3,7 +3,7 @@ Rails.application.routes.draw do
   resources :screens, only: %i[index new create show destroy]
   root "screens#new"
 
-  # PromptEngine's admin (where the Claude parser's prompt is edited and versioned)
+  # PromptEngine's admin (where the LLM parser's prompt is edited and versioned)
   # is only routed for signed-in users; everyone else is sent to the sign-in page.
   constraints ->(request) { Session.exists?(id: request.cookie_jar.signed[:session_id]) } do
     mount PromptEngine::Engine => "/prompts", as: :prompt_engine

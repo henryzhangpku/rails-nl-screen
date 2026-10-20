@@ -1,7 +1,12 @@
-# Optional: ask Claude to *propose* the typed screen as JSON. The proposal goes
+# Optional: ask an LLM to *propose* the typed screen as JSON. The proposal goes
 # through exactly the same Condition validations as the rule-based parser, so
-# the model can suggest but only code decides. Used only if ANTHROPIC_API_KEY is set.
-module ScreenParser::Claude
+# the model can suggest but only code decides.
+#
+# Any provider RubyLLM supports works: the provider follows from the model name
+# (claude-* -> Anthropic, deepseek-* -> DeepSeek, gpt-* -> OpenAI, gemini-* -> Gemini).
+# The model is the prompt version's (edit it at /prompts), or SCREEN_PARSER_MODEL.
+# Used only when that provider's API key is set (config/initializers/ruby_llm.rb).
+module ScreenParser::LLM
   MODEL = "claude-sonnet-5-5"
 
   SCHEMA = {
@@ -39,6 +44,7 @@ module ScreenParser::Claude
     - price: latest close in dollars. operators: above, below. A range becomes two conditions.
     timeframe is "daily" unless the user asks for weekly.
     Put any part of the request you cannot express with these into `unrecognized`, verbatim. Never invent conditions.
+    Reply with only a JSON object: {"conditions": [{"indicator", "timeframe", "operator", "period", "value"}], "unrecognized": ["..."]}.
   PROMPT
 
   # The prompt is data: PromptEngine stores it in the record with slug "screen-parser" and keeps
@@ -46,27 +52,43 @@ module ScreenParser::Claude
   # record doesn't exist or isn't active, the prompt above is used as written.
   PROMPT_NAME = "screen-parser"
 
-  # What gets sent: instructions, the user message, the model, and a label naming them.
-  Request = Data.define(:instructions, :message, :model, :label)
+  # What gets sent: instructions, the user message, the model and its provider,
+  # and a label naming them.
+  Request = Data.define(:instructions, :message, :model, :provider, :protocol, :label)
 
-  def self.enabled? = ENV["ANTHROPIC_API_KEY"].present?
+  def self.enabled? = configured?(request_for("").provider)
 
-  # The label is stored on every screen, so you can tell which prompt version
-  # (or, without PromptEngine, which fingerprint of the in-code prompt) parsed it.
+  def self.configured?(provider)
+    RubyLLM::Provider.providers[provider&.to_sym]&.configured?(RubyLLM.config) || false
+  end
+
+  # The label is stored on every screen, so you can tell which model and prompt
+  # version (or, without PromptEngine, which fingerprint of the in-code prompt) parsed it.
   # Pass a PromptEngine::PromptVersion to use that version instead of the active one
   # (that's how PromptEval compares versions).
   def self.request_for(text, version: nil)
     version ||= PromptEngine::Prompt.active.find_by(slug: PROMPT_NAME)&.current_version
     return fallback_request(text) unless version
 
-    model = version.model.presence || MODEL
+    metadata = version.metadata.to_h
+    model = ENV["SCREEN_PARSER_MODEL"].presence || version.model.presence || MODEL
     message = PromptEngine::VariableDetector.new(version.content).render(query: text)
-    Request.new(version.system_message, message, model, "#{model}, prompt #{PROMPT_NAME} v#{version.version_number}")
+    Request.new(version.system_message, message, model, provider_for(model, metadata["provider"]), metadata["protocol"],
+                "#{model}, prompt #{PROMPT_NAME} v#{version.version_number}")
   end
 
   def self.fallback_request(text)
+    model = ENV["SCREEN_PARSER_MODEL"].presence || MODEL
     fingerprint = Digest::SHA256.hexdigest(SYSTEM_PROMPT + SCHEMA.to_json).first(8)
-    Request.new(SYSTEM_PROMPT, text, MODEL, "#{MODEL}, prompt #{fingerprint}")
+    Request.new(SYSTEM_PROMPT, text, model, provider_for(model), nil, "#{model}, prompt #{fingerprint}")
+  end
+
+  # From RubyLLM's model registry; for a model it doesn't list, name the provider in
+  # SCREEN_PARSER_PROVIDER or the prompt's metadata ({"provider": "deepseek"}).
+  def self.provider_for(model, named = nil)
+    (ENV["SCREEN_PARSER_PROVIDER"].presence || named.presence || RubyLLM.models.find(model).provider).to_s
+  rescue RubyLLM::ModelNotFoundError
+    nil
   end
 
   def self.label = request_for("").label
@@ -74,11 +96,14 @@ module ScreenParser::Claude
   # The chat is injectable so tests (or a different provider) can stand in.
   def self.parse(text, chat: nil, version: nil)
     request = request_for(text, version: version)
-    chat ||= RubyLLM.chat(model: request.model, provider: :anthropic)
+    chat ||= RubyLLM.chat(model: request.model, provider: request.provider&.to_sym, protocol: request.protocol&.to_sym,
+                          assume_model_exists: request.provider.present?)
     response = chat.with_instructions(request.instructions).with_schema(SCHEMA).ask(request.message)
-    raise "Claude stopped early (#{response.finish_reason})" unless response.finish_reason.in?([ :stop, nil ])
+    raise "#{request.model} stopped early (#{response.finish_reason})" unless response.finish_reason.in?([ :stop, nil ])
 
-    json = response.parsed
-    ScreenParser::Result.new(json["conditions"].map(&:symbolize_keys), json["unrecognized"])
+    # Providers without strict JSON schemas (e.g. DeepSeek's chat API) only promise *a*
+    # JSON object, so read it defensively; the Condition validations do the rest.
+    json = response.parsed.to_h
+    ScreenParser::Result.new(Array(json["conditions"]).grep(Hash).map(&:symbolize_keys), Array(json["unrecognized"]).map(&:to_s))
   end
 end

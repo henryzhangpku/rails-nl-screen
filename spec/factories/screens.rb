@@ -17,8 +17,8 @@ FactoryBot.define do
       scanned_count { 40 }
     end
 
-    trait :from_claude do
-      source { "claude" }
+    trait :from_llm do
+      source { "llm" }
       parser { "claude-sonnet-5-5, prompt 00000000" }
     end
 

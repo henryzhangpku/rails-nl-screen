@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe ScreenParser::Claude do
+RSpec.describe ScreenParser::LLM do
   # Stands in for a RubyLLM::Chat: records what it was given, returns a canned reply.
   let(:reply) { Struct.new(:finish_reason, :parsed).new(:stop, proposal) }
   let(:chat) do
@@ -66,5 +66,62 @@ RSpec.describe ScreenParser::Claude do
 
       expect(chat).to have_received(:with_instructions).with(described_class::SYSTEM_PROMPT)
     end
+  end
+
+  describe "choosing the provider" do
+    around do |example|
+      saved = RubyLLM.config.deepseek_api_key
+      example.run
+    ensure
+      RubyLLM.config.deepseek_api_key = saved
+    end
+
+    def with_env(vars)
+      vars.each { |key, value| ENV[key] = value }
+      yield
+    ensure
+      vars.each_key { |key| ENV.delete(key) }
+    end
+
+    it "follows the model's provider in RubyLLM's registry" do
+      expect(described_class.provider_for("claude-sonnet-5-5")).to eq "anthropic"
+      expect(described_class.provider_for("deepseek-v4-flash")).to eq "deepseek"
+      expect(described_class.provider_for("not-a-model")).to be_nil
+    end
+
+    it "uses the provider named in the prompt's metadata for models the registry doesn't list" do
+      PromptEngine::Prompt.create!(name: described_class::PROMPT_NAME, status: "active", model: "deepseek-chat",
+                                   metadata: { "provider" => "deepseek" }, system_message: "x", content: "{{query}}")
+
+      expect(described_class.request_for("q")).to have_attributes(model: "deepseek-chat", provider: "deepseek")
+    end
+
+    it "is enabled only when the chosen model's provider has a key" do
+      with_env("SCREEN_PARSER_MODEL" => "deepseek-v4-flash") do
+        RubyLLM.config.deepseek_api_key = nil
+        expect(described_class).not_to be_enabled
+
+        RubyLLM.config.deepseek_api_key = "sk-test"
+        expect(described_class).to be_enabled
+        expect(described_class.label).to start_with "deepseek-v4-flash, prompt "
+      end
+    end
+
+    it "builds the chat for that model and provider" do
+      allow(RubyLLM).to receive(:chat).and_return(chat)
+      with_env("SCREEN_PARSER_MODEL" => "deepseek-v4-flash") { described_class.parse("RSI under 30") }
+
+      expect(RubyLLM).to have_received(:chat)
+        .with(model: "deepseek-v4-flash", provider: :deepseek, protocol: nil, assume_model_exists: true)
+    end
+  end
+
+  it "reads loosely shaped JSON defensively, leaving the rest to the Condition validations" do
+    loose = Struct.new(:finish_reason, :parsed).new(:stop, { "conditions" => [ { "indicator" => "rsi" }, "junk" ] })
+    allow(chat).to receive(:ask).and_return(loose)
+
+    result = described_class.parse("RSI", chat: chat)
+    expect(result.conditions).to eq [ { indicator: "rsi" } ]
+    expect(result.unrecognized).to eq []
   end
 end
