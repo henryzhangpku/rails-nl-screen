@@ -41,15 +41,40 @@ module ScreenParser::Claude
     Put any part of the request you cannot express with these into `unrecognized`, verbatim. Never invent conditions.
   PROMPT
 
+  # The prompt is data: PromptEngine stores it in the "screen-parser" record and keeps
+  # every edit as a numbered version (edit it at /prompts once signed in). If that
+  # record doesn't exist or isn't active, the prompt above is used as written.
+  PROMPT_NAME = "screen-parser"
+
+  # What gets sent: instructions, the user message, the model, and a label naming them.
+  Request = Data.define(:instructions, :message, :model, :label)
+
   def self.enabled? = ENV["ANTHROPIC_API_KEY"].present?
 
-  # Model plus a fingerprint of the prompt and schema, stored on every screen:
-  # change the prompt and you can tell which screens were parsed by which version.
-  def self.label = "#{MODEL}, prompt #{Digest::SHA256.hexdigest(SYSTEM_PROMPT + SCHEMA.to_json).first(8)}"
+  # The label is stored on every screen, so you can tell which prompt version
+  # (or, without PromptEngine, which fingerprint of the in-code prompt) parsed it.
+  def self.request_for(text)
+    prompt = PromptEngine::Prompt.active.find_by(name: PROMPT_NAME)
+    return fallback_request(text) unless prompt
+
+    rendered = PromptEngine.render(PROMPT_NAME, variables: { query: text })
+    model = rendered[:model].presence || MODEL
+    Request.new(rendered[:system_message], rendered[:content], model,
+                "#{model}, prompt #{PROMPT_NAME} v#{prompt.current_version.version_number}")
+  end
+
+  def self.fallback_request(text)
+    fingerprint = Digest::SHA256.hexdigest(SYSTEM_PROMPT + SCHEMA.to_json).first(8)
+    Request.new(SYSTEM_PROMPT, text, MODEL, "#{MODEL}, prompt #{fingerprint}")
+  end
+
+  def self.label = request_for("").label
 
   # The chat is injectable so tests (or a different provider) can stand in.
-  def self.parse(text, chat: RubyLLM.chat(model: MODEL, provider: :anthropic))
-    response = chat.with_instructions(SYSTEM_PROMPT).with_schema(SCHEMA).ask(text)
+  def self.parse(text, chat: nil)
+    request = request_for(text)
+    chat ||= RubyLLM.chat(model: request.model, provider: :anthropic)
+    response = chat.with_instructions(request.instructions).with_schema(SCHEMA).ask(request.message)
     raise "Claude stopped early (#{response.finish_reason})" unless response.finish_reason.in?([ :stop, nil ])
 
     json = response.parsed

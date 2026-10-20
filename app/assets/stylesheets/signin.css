@@ -1,0 +1,11 @@
+/* The admin sign-in page (Rails 8 authentication generator, restyled). */
+.ns-signin { max-width: 26rem; }
+.ns-signin__form { display: grid; gap: 0.5rem; margin-top: 0.5rem; }
+.ns-signin__label { font: 600 0.8rem/1 var(--ns-font-body); color: var(--ns-ink-2); margin-top: 0.4rem; }
+.ns-signin__input {
+  width: 100%; padding: 0.65rem 0.8rem; font: 500 0.95rem/1.4 var(--ns-font-mono); color: var(--ns-ink);
+  border: 1px solid var(--ns-rule); border-radius: 6px; background: var(--ns-surface);
+}
+.ns-signin__form .ns-compose__submit { margin-top: 0.6rem; }
+.ns-topbar__nav form { display: contents; }
+.ns-topbar__button { border: 0; background: none; cursor: pointer; }

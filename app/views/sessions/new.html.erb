@@ -1,0 +1,16 @@
+<% content_for :title, "Sign in · NL Screen" %>
+
+<section class="ns-stack ns-signin">
+  <span class="ns-text--eyebrow">Admin</span>
+  <h1>Sign in to edit prompts</h1>
+  <p class="ns-text--lede">The screen parser's Claude prompt lives in PromptEngine as versioned data. Screens themselves need no account.</p>
+
+  <%= form_with url: session_path, class: "ns-signin__form" do |form| %>
+    <% if flash[:alert] %><p class="ns-compose__error" role="alert"><%= flash[:alert] %></p><% end %>
+    <%= form.label :email_address, "Email", class: "ns-signin__label" %>
+    <%= form.email_field :email_address, required: true, autofocus: true, autocomplete: "username", value: params[:email_address], class: "ns-signin__input" %>
+    <%= form.label :password, class: "ns-signin__label" %>
+    <%= form.password_field :password, required: true, autocomplete: "current-password", maxlength: 72, class: "ns-signin__input" %>
+    <%= form.submit "Sign in", class: "ns-compose__submit" %>
+  <% end %>
+</section>

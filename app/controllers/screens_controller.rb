@@ -1,4 +1,6 @@
 class ScreensController < ApplicationController
+  allow_unauthenticated_access
+
   SORTS = %w[created_at matches_count query status].freeze
 
   # History: search, filter, sort and paginate inside the "screens" Turbo Frame.
