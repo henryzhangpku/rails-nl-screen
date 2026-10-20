@@ -131,7 +131,7 @@ look in this repo.
 | Test::Unit, fixtures only | Minitest is still the default; this app uses **RSpec** (rspec-rails): model, request and **system specs** in a real browser | `spec/models/*`, `spec/requests/*`, `spec/system/screens_spec.rb` |
 | — | Ruby 3 niceties used here: `Data.define` value objects, endless methods (`def spec = SPECS[indicator]`) | `Condition::Evaluation`, `PriceSeries::Point`, `ScreenParser::Result` |
 | — | Built-in health check, Brakeman, RuboCop (omakase style), GitHub Actions CI | `/up` route, `.github/workflows/ci.yml` |
-| `acts_as_authenticated` / restful_authentication plugins | **`bin/rails generate authentication`**: sessions, `has_secure_password`, a `Current` model and built-in `rate_limit`, generated as your own code | `app/controllers/concerns/authentication.rb`, `config/routes.rb` (route constraint guarding `/prompts`) |
+| `acts_as_authenticated` / restful_authentication plugins | **`bin/rails generate authentication`**: sessions, `has_secure_password`, a `Current` model and built-in `rate_limit`, generated as your own code | `app/controllers/concerns/authentication.rb`, `config/routes.rb` (route constraint guarding `/prompts`), `config/initializers/prompt_engine.rb` (the engine's own controllers require it too) |
 | Engines (Rails 2.3, still rough) | **Mountable engines** with isolated namespaces, migrations and assets | `mount PromptEngine::Engine => "/prompts"` |
 | `annotate_models` plugin | **annotaterb** (same idea, maintained): schema comments above each model, refreshed after `db:migrate` | `app/models/*.rb`, `.annotaterb.yml` |
 | `rake` tasks, views only inside requests | Rake still, plus **rendering views anywhere** with `ApplicationController.render` | `lib/tasks/demo.rake` builds the Pages demo from the real partials |
@@ -142,5 +142,5 @@ configuration". Read in this order: `config/routes.rb`, `app/controllers/screens
 
 ## Not done (on purpose)
 
-- Sign-in only guards the prompt editor; screens are public. No deploy secrets: before using Kamal you'd run `bin/rails credentials:edit` and fill in `config/deploy.yml`.
+- One admin user, by design: there is no sign-up and no roles. Sign-in (30-day sessions) guards the prompt editor and deleting screens; running and browsing screens is public, with creating one rate limited. No deploy secrets: before using Kamal you'd run `bin/rails credentials:edit` and fill in `config/deploy.yml`.
 - Prices are end-of-day, split-adjusted but not dividend-adjusted, from an unofficial API; this is a learning toy, not a trading tool.

@@ -19,5 +19,9 @@
 #  user_id  (user_id => users.id)
 #
 class Session < ApplicationRecord
+  LIFETIME = 30.days # then sign in again; the cookie expires at the same time
+
   belongs_to :user
+
+  scope :active, -> { where(created_at: LIFETIME.ago..) }
 end

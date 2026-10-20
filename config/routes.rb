@@ -5,7 +5,8 @@ Rails.application.routes.draw do
 
   # PromptEngine's admin (where the LLM parser's prompt is edited and versioned)
   # is only routed for signed-in users; everyone else is sent to the sign-in page.
-  constraints ->(request) { Session.exists?(id: request.cookie_jar.signed[:session_id]) } do
+  # Its controllers also require the sign-in themselves (config/initializers/prompt_engine.rb).
+  constraints ->(request) { Session.active.exists?(id: request.cookie_jar.signed[:session_id]) } do
     mount PromptEngine::Engine => "/prompts", as: :prompt_engine
   end
   get "prompts(/*path)", to: redirect("/session/new", status: 302)
