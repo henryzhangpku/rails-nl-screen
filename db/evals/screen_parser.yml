@@ -1,0 +1,24 @@
+# Eval cases for the screen parser's prompt, loaded into PromptEngine by db/seeds.rb.
+# `expected` is what the code must end up *accepting*: Condition labels after defaults
+# and validation, so "RSI under 30" and {"period": null} both grade as "RSI(14) below 30".
+# `unrecognized: true` means part of the query must be reported back, not guessed.
+# spec/models/prompt_eval_spec.rb checks that the rule-based parser passes every case.
+- query: RSI(14) under 30 on the daily, MACD crossing up, volume above its 20-day average, price above the 200-day moving average
+  expected: [MACD crosses above signal, Price above SMA(200), RSI(14) below 30, Volume above 1x its 20-bar average]
+- query: within 5% of the 52-week high, price above the 50-day EMA, volume 1.5x its 20-day average
+  expected: [Drawdown from 52-week high below 5%, Price above EMA(50), Volume above 1.5x its 20-bar average]
+- query: down at least 20% from the 52-week high, RSI under 40, price between $20 and $200
+  expected: [Drawdown from 52-week high above 20%, Price above $20, Price below $200, RSI(14) below 40]
+- query: weekly RSI above 60 and price above the 30-week moving average on the weekly
+  expected: [Price above SMA(30) (weekly), RSI(14) above 60 (weekly)]
+- query: MACD crossing up, price above the 200-day moving average
+  expected: [MACD crosses above signal, Price above SMA(200)]
+- query: oversold with volume 2x its 50-day average
+  expected: [RSI(14) below 30, Volume above 2x its 50-bar average]
+- query: price between $20 and $100 and within 5% of the 52-week high
+  expected: [Drawdown from 52-week high below 5%, Price above $20, Price below $100]
+- query: below the 21 day EMA, MACD bearish cross
+  expected: [MACD crosses below signal, Price below EMA(21)]
+- query: RSI under 30 and good vibes
+  expected: [RSI(14) below 30]
+  unrecognized: true

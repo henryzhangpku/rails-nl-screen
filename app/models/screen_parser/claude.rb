@@ -53,14 +53,15 @@ module ScreenParser::Claude
 
   # The label is stored on every screen, so you can tell which prompt version
   # (or, without PromptEngine, which fingerprint of the in-code prompt) parsed it.
-  def self.request_for(text)
-    prompt = PromptEngine::Prompt.active.find_by(name: PROMPT_NAME)
-    return fallback_request(text) unless prompt
+  # Pass a PromptEngine::PromptVersion to use that version instead of the active one
+  # (that's how PromptEval compares versions).
+  def self.request_for(text, version: nil)
+    version ||= PromptEngine::Prompt.active.find_by(name: PROMPT_NAME)&.current_version
+    return fallback_request(text) unless version
 
-    rendered = PromptEngine.render(PROMPT_NAME, variables: { query: text })
-    model = rendered[:model].presence || MODEL
-    Request.new(rendered[:system_message], rendered[:content], model,
-                "#{model}, prompt #{PROMPT_NAME} v#{prompt.current_version.version_number}")
+    model = version.model.presence || MODEL
+    message = PromptEngine::VariableDetector.new(version.content).render(query: text)
+    Request.new(version.system_message, message, model, "#{model}, prompt #{PROMPT_NAME} v#{version.version_number}")
   end
 
   def self.fallback_request(text)
@@ -71,8 +72,8 @@ module ScreenParser::Claude
   def self.label = request_for("").label
 
   # The chat is injectable so tests (or a different provider) can stand in.
-  def self.parse(text, chat: nil)
-    request = request_for(text)
+  def self.parse(text, chat: nil, version: nil)
+    request = request_for(text, version: version)
     chat ||= RubyLLM.chat(model: request.model, provider: :anthropic)
     response = chat.with_instructions(request.instructions).with_schema(SCHEMA).ask(request.message)
     raise "Claude stopped early (#{response.finish_reason})" unless response.finish_reason.in?([ :stop, nil ])
