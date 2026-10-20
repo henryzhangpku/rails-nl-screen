@@ -81,10 +81,14 @@ class Screen < ApplicationRecord
     screen
   end
 
+  # What the LLM can fail with: the provider's API errors, the network, or a reply we
+  # can't use. Anything else is a bug, and raises.
+  LLM_ERRORS = [ RubyLLM::Error, Faraday::Error, JSON::ParserError, ScreenParser::LLM::Error ].freeze
+
   def propose_with(parser)
     self.source = parser == ScreenParser ? "rules" : "llm"
     record_proposal(parser, parser.parse(query))
-  rescue => e
+  rescue *LLM_ERRORS => e
     Rails.logger.warn("#{parser} failed: #{e.class}: #{e.message}")
     notes << "The LLM was unavailable (#{e.class.name.demodulize}), so the rule-based parser was used"
     self.source = "rules"

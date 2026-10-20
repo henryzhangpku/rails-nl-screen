@@ -33,7 +33,7 @@ RSpec.describe ScreenParser::LLM do
 
   it "raises when the model stops early, so the caller falls back to the rules" do
     allow(chat).to receive(:ask).and_return(Struct.new(:finish_reason, :parsed).new(:content_filter, nil))
-    expect { described_class.parse("anything", chat: chat) }.to raise_error(/stopped early/)
+    expect { described_class.parse("anything", chat: chat) }.to raise_error(described_class::IncompleteResponse, /stopped early \(content_filter\)/)
   end
 
   it "labels screens with the model and a fingerprint of the in-code prompt when PromptEngine has none" do

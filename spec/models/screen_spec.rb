@@ -32,7 +32,13 @@ RSpec.describe Screen do
     end
   end
 
-  let(:broken_llm) { Module.new { def self.parse(_text) = raise(Timeout::Error) } }
+  # Pretends to be ScreenParser::LLM, raising what it's told to.
+  def failing_llm(error)
+    Module.new do
+      define_singleton_method(:label) { "failing-llm" }
+      define_singleton_method(:parse) { |_text| raise error }
+    end
+  end
 
   describe ".from_query" do
     it "builds validated conditions with the rule-based parser" do
@@ -51,11 +57,23 @@ RSpec.describe Screen do
       expect(screen.proposal["conditions"].size).to eq 3 # the raw proposal is kept, including what was dropped
     end
 
-    it "falls back to the rules when the LLM fails" do
-      screen = described_class.from_query("RSI under 30", parser: broken_llm)
-      expect(screen).to have_attributes(source: "rules", parser: "rules v1")
-      expect(screen.conditions.map(&:label)).to eq [ "RSI(14) below 30" ]
-      expect(screen.notes.first).to match(/rule-based parser was used/)
+    {
+      "the provider returns an error" => RubyLLM::RateLimitError.new("slow down"),
+      "the network fails"             => Faraday::TimeoutError.new("execution expired"),
+      "the reply isn't JSON"          => JSON::ParserError.new("unexpected token"),
+      "the model stops early"         => ScreenParser::LLM::IncompleteResponse.new("stopped early (length)")
+    }.each do |what, error|
+      it "falls back to the rules when #{what}" do
+        screen = described_class.from_query("RSI under 30", parser: failing_llm(error))
+        expect(screen).to have_attributes(source: "rules", parser: "rules v1")
+        expect(screen.conditions.map(&:label)).to eq [ "RSI(14) below 30" ]
+        expect(screen.notes.first).to eq "The LLM was unavailable (#{error.class.name.demodulize}), so the rule-based parser was used"
+      end
+    end
+
+    it "lets a bug in the parser raise instead of hiding it behind the fallback" do
+      expect { described_class.from_query("RSI under 30", parser: failing_llm(NoMethodError.new("undefined method"))) }
+        .to raise_error(NoMethodError)
     end
 
     it "keeps at most #{described_class::MAX_CONDITIONS} conditions, and says so" do

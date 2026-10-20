@@ -11,7 +11,8 @@ module ScreenParser::LLM
 
   # Raised for a reply the parser can't use at all; Screen falls back to the rules.
   class Error < StandardError; end
-  class MalformedResponse < Error; end
+  class IncompleteResponse < Error; end # the model stopped before finishing (length, content filter, ...)
+  class MalformedResponse < Error; end  # no conditions array in the reply
 
   SCHEMA = {
     type: "object",
@@ -115,7 +116,7 @@ module ScreenParser::LLM
     chat ||= RubyLLM.chat(model: request.model, provider: request.provider&.to_sym, protocol: request.protocol&.to_sym,
                           assume_model_exists: request.provider.present?)
     response = chat.with_instructions(request.instructions).with_schema(SCHEMA).ask(request.message)
-    raise "#{request.model} stopped early (#{response.finish_reason})" unless response.finish_reason.in?([ :stop, nil ])
+    raise IncompleteResponse, "#{request.model} stopped early (#{response.finish_reason})" unless response.finish_reason.in?([ :stop, nil ])
 
     # Not every provider/protocol enforces SCHEMA (DeepSeek's chat completions only promise
     # *a* JSON object), so read it defensively. No conditions array means no usable reply;
