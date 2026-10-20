@@ -37,8 +37,8 @@ Suggested reading order for the code: `config/routes.rb` → `app/controllers/sc
 | Front end | Hotwire: Turbo Drive, Turbo Streams, one Stimulus controller | `app/views/**`, `app/javascript/controllers/examples_controller.js` |
 | JavaScript delivery | **Importmaps** (no bundler, no `node_modules`) | `config/importmap.rb` |
 | CSS / assets | **Propshaft** serving one hand-written stylesheet | `app/assets/stylesheets/application.css` |
-| External APIs | Net::HTTP (Yahoo chart API), official `anthropic` gem (optional) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/claude.rb` |
-| Tests | Minitest: unit, integration, system (Selenium + headless Chrome) | `test/**` |
+| External APIs | Net::HTTP (Yahoo chart API), **RubyLLM** (optional, for Claude) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/claude.rb` |
+| Tests | **RSpec** (rspec-rails): model, request and system specs (Selenium + headless Chrome) | `spec/**` |
 | CI | GitHub Actions: Brakeman, bundler-audit, importmap audit, RuboCop, tests | `.github/workflows/ci.yml` |
 | Static demo | Rake task + `ApplicationController.render` + GitHub Pages | `lib/tasks/demo.rake`, `.github/workflows/pages.yml` |
 | Deployment (configured) | **Kamal** + Docker | `config/deploy.yml`, `.kamal/` |
@@ -272,8 +272,9 @@ flowchart TD
 
 - The rule-based parser splits the text into clauses (keeping "between $20 and $200" intact), then each
   clause is matched by one rule (RSI, MACD, volume, 52-week drawdown, moving average, price).
-- The optional Claude path uses the official `anthropic` gem with `output_config.format` set to a JSON schema,
-  so the reply is guaranteed to parse. The parser is injected (`Screen.from_query(query, parser:)`), which is
+- The optional Claude path uses **RubyLLM** (`RubyLLM.chat(...).with_instructions(...).with_schema(SCHEMA).ask(text)`),
+  a provider-agnostic client; `with_schema` turns on structured output, so the reply is guaranteed to parse,
+  and swapping providers is a one-line change. The parser is injected (`Screen.from_query(query, parser:)`), which is
   how the tests swap in fakes without a mocking library.
 - Every screen stores the raw proposal and a parser label (`rules v1`, or the model name plus a fingerprint of
   the prompt and schema), so any result can be traced back to exactly what proposed it.
@@ -409,31 +410,32 @@ broadcasts *must* go through a shared store to reach the browser. `bin/rails db:
 
 ## 12. Testing and CI
 
-> **In 2007** Test::Unit with fixtures, and browser testing meant Selenium IDE recordings. **Now** still Minitest by default, plus `ActionDispatch::SystemTestCase` driving headless Chrome, parallel tests, and Brakeman/RuboCop in CI out of the box.
+> **In 2007** Test::Unit with fixtures, and browser testing meant Selenium IDE recordings. **Now** Minitest is still the default, but this app uses RSpec (rspec-rails), the other mainstream choice: `describe`/`it` specs, `let`, `have_enqueued_job`, and system specs driving headless Chrome, with Brakeman/RuboCop in CI out of the box.
 
 ```mermaid
 flowchart LR
-  subgraph Unit["Unit (fast, no network)"]
+  subgraph Models["Model specs: spec/models (fast, no network)"]
     I["Indicators<br/>known values, incl. Wilder's RSI table"]
     PA["ScreenParser<br/>every rule"]
+    CL["ScreenParser::Claude<br/>instance_double of RubyLLM::Chat"]
     CO["Condition<br/>whitelist + evaluate + strength"]
     PS["PriceSeries<br/>weekly resample"]
     YH["MarketData::Yahoo<br/>parse fixture JSON"]
     SC["Screen<br/>fake source + fake Claude"]
   end
-  subgraph Integration
-    CT["ScreensController<br/>enqueues job, renders understanding"]
+  subgraph Requests["Request spec: spec/requests"]
+    CT["POST /screens<br/>have_enqueued_job, renders understanding"]
   end
-  subgraph System
+  subgraph System["System spec: spec/system"]
     ST["Headless Chrome:<br/>click example → run → see results"]
   end
-  Unit --> Integration --> System
+  Models --> Requests --> System
 ```
 
 - **Dependency injection instead of mocks.** `Screen#run(symbols, source:)` and
   `Screen.from_query(query, parser:)` accept collaborators, so tests pass a `FakeSource` module that returns
-  crafted bars and a `FakeClaude` that proposes an invalid condition. Minitest 6 no longer bundles its mocking
-  library, and this style doesn't need it.
+  crafted bars and a `FakeClaude` that proposes an invalid condition. Where a real library object is involved
+  (the RubyLLM chat), an RSpec `instance_double` verifies that the stub matches the real class's methods.
 - **Known-value tests** for every indicator. RSI is checked against Wilder's published worked example.
 - **System test** runs the real UI in headless Chrome with synthetic prices and an inline job.
 - **CI** (`.github/workflows/ci.yml`) runs Brakeman, bundler-audit, importmap audit, RuboCop (omakase style),
@@ -542,9 +544,9 @@ then needs its own types, fetching, caching and rendering code.
 | Styling | One CSS file via Propshaft | Tailwind / CSS modules | |
 | Autoloading | Zeitwerk (path = constant) | Explicit `import` | Python is explicit; Rails is convention. |
 | Config / secrets | `credentials.yml.enc` + env vars | `.env` + `pydantic-settings` | |
-| Tests | Minitest; system tests with headless Chrome | pytest (+ fixtures), Playwright for E2E | pytest fixtures ≈ Rails test helpers; Playwright ≈ system tests. |
+| Tests | RSpec; system specs with headless Chrome | pytest (+ fixtures), Playwright for E2E | `let` ≈ pytest fixtures; Playwright ≈ system tests. |
 | Lint / security | RuboCop, Brakeman, bundler-audit | Ruff, mypy/pyright, Bandit, pip-audit | |
-| LLM call | `anthropic` gem, JSON schema from `SPECS` | `anthropic` Python SDK, schema from Pydantic (`model_json_schema()`) | Python is nicer here: the Pydantic model *is* the schema and the validator. |
+| LLM call | RubyLLM, `with_schema` built from `SPECS` | `anthropic` Python SDK (or LiteLLM), schema from Pydantic (`model_json_schema()`) | Python is nicer here: the Pydantic model *is* the schema and the validator. |
 | Deploy | Kamal + Docker to any host; Thruster | Docker + Fly/Render/ECS; Vercel for Next.js | |
 | Processes in dev | `bin/dev` (one) | API server + worker + Redis + Postgres + Next dev server | Usually `docker compose up`. |
 

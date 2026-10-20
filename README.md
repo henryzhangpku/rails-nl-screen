@@ -57,8 +57,8 @@ source, now puts a JavaScript bot check in front of its CSV downloads, so it was
 Tests:
 
 ```sh
-bin/rails test           # parser, every indicator (known values), conditions, screen run, controller
-bin/rails test:system    # happy path in headless Chrome (synthetic data, job run inline)
+bundle exec rspec --exclude-pattern "spec/system/**/*_spec.rb"   # models, parser, indicators, requests
+bundle exec rspec spec/system   # happy path in headless Chrome (synthetic data, job run inline)
 bin/rubocop && bin/brakeman
 ```
 
@@ -104,7 +104,7 @@ look in this repo.
 | Full re-render or hand-written DOM patching | **Turbo 8 page refresh + morphing**: "re-fetch this page and morph the difference" | `turbo_refreshes_with method: :morph` in `screens/show.html.erb` |
 | `javascripts/*.js` + inline JS | **Stimulus** controllers: small classes wired up with `data-` attributes | `app/javascript/controllers/examples_controller.js` (`data-action="examples#fill"`) |
 | Sprockets (from 3.1), then Webpacker | **Importmaps** (no bundler, no Node) + **Propshaft** (just serves and fingerprints files) | `config/importmap.rb`, `app/javascript/application.js`, `app/assets/stylesheets/application.css` |
-| `vendor/plugins`, `config.gem` | **Bundler** + `Gemfile.lock` | `Gemfile` (`anthropic`, `csv` added with `bundle add`) |
+| `vendor/plugins`, `config.gem` | **Bundler** + `Gemfile.lock` | `Gemfile` (`ruby_llm`, `rspec-rails` added with `bundle add`) |
 | `require_dependency`, const_missing magic | **Zeitwerk** autoloading: file path = constant name | `app/models/market_data/yahoo.rb` is `MarketData::Yahoo`; `app/models/screen_parser/claude.rb` is `ScreenParser::Claude` |
 | BackgrounDRb, `script/runner` from cron | **Active Job** + **Solid Queue** (jobs in a database table, no Redis) | `app/jobs/run_screen_job.rb`, `config/queue.yml`, `config/puma.rb` (`plugin :solid_queue`) |
 | memcached | **Solid Cache** (cache in a SQLite/DB table) | `config/cache.yml`, `Rails.cache.fetch` in `app/models/bar.rb` |
@@ -117,7 +117,7 @@ look in this repo.
 | `find(:all, :conditions => ...)` | Chainable relations, `upsert_all` | `Bar.for_symbol`, `Bar.import` |
 | `config/database.yml` passwords, `secrets.yml` | **Encrypted credentials** (`config/credentials.yml.enc` + a key you never commit) | Not used here (no secrets). `bin/rails credentials:edit` creates both files; `config/master.key` is gitignored. API keys are plain env vars. |
 | Capistrano to a hand-built server | **Kamal** (Docker deploys to any host, zero-downtime) + **Thruster** (HTTP/2, caching proxy in front of Puma) | `config/deploy.yml`, `.kamal/`, `Dockerfile` |
-| Test::Unit, fixtures only | Minitest (still the default), parallel tests, **system tests** in a real browser | `test/models/*`, `test/system/screens_test.rb` |
+| Test::Unit, fixtures only | Minitest is still the default; this app uses **RSpec** (rspec-rails): model, request and **system specs** in a real browser | `spec/models/*`, `spec/requests/*`, `spec/system/screens_spec.rb` |
 | — | Ruby 3 niceties used here: `Data.define` value objects, endless methods (`def spec = SPECS[indicator]`) | `Condition::Evaluation`, `PriceSeries::Point`, `ScreenParser::Result` |
 | — | Built-in health check, Brakeman, RuboCop (omakase style), GitHub Actions CI | `/up` route, `.github/workflows/ci.yml` |
 | `rake` tasks, views only inside requests | Rake still, plus **rendering views anywhere** with `ApplicationController.render` | `lib/tasks/demo.rake` builds the Pages demo from the real partials |
