@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_20_055552) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_20_070932) do
   create_table "bars", force: :cascade do |t|
     t.string "symbol", null: false
     t.date "date", null: false
@@ -45,7 +45,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_20_055552) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.float "score", default: 0.0, null: false
-    t.index ["screen_id"], name: "index_matches_on_screen_id"
+    t.index ["screen_id", "symbol"], name: "index_matches_on_screen_id_and_symbol", unique: true
   end
 
   create_table "prompt_engine_eval_results", force: :cascade do |t|

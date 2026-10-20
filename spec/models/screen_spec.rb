@@ -120,6 +120,20 @@ RSpec.describe Screen do
       expect(screen.reload.matches_count).to eq 2
     end
 
+    it "starts over when run again, so no symbol matches twice" do
+      2.times { screen.run(%w[UP FAST DOWN MISSING], source: fake_source) }
+
+      expect(screen.matches.map(&:symbol)).to eq %w[FAST UP]
+      expect(Match.where(screen: screen).count).to eq 2
+      expect(screen.reload.matches_count).to eq 2
+      expect(screen.notes.grep(/No data/)).to eq [ "No data for 1 symbol(s): MISSING" ]
+    end
+
+    it "fails when no symbol has data, so the job can retry" do
+      expect { screen.run(%w[MISSING], source: fake_source) }.to raise_error(MarketData::Error, /No data for any/)
+      expect(screen.reload).to be_failed
+    end
+
     it "ranks matches by how decisively they pass" do
       screen.run(%w[UP FAST DOWN], source: fake_source)
 

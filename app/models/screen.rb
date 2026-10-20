@@ -41,6 +41,7 @@ class Screen < ApplicationRecord
   after_update_commit -> { broadcast_refresh_to self }
 
   ATTRIBUTES = %i[indicator timeframe operator period value].freeze
+  NO_DATA = "No data for " # the note Screen#run leaves about skipped symbols
   MAX_CONDITIONS = 10 # each one is evaluated against every symbol in the universe
 
   # Shown as "Try:" buttons on the form, and used to build the static demo.
@@ -104,7 +105,14 @@ class Screen < ApplicationRecord
   end
 
   # Called from RunScreenJob. Scans every symbol, streaming matches as they're found.
+  # A repeated or retried run starts over, so each symbol matches at most once
+  # (and the unique index on matches [screen_id, symbol] holds).
   def run(symbols = Universe.symbols, source: MarketData.source)
+    # One DELETE, without loading the association (so `matches` still reads ranked).
+    # It skips the counter cache, which can only be written in SQL, so recount.
+    Match.where(screen: self).delete_all
+    self.class.reset_counters(id, :matches)
+    notes.reject! { |note| note.start_with?(NO_DATA) }
     update!(status: :running, universe_size: symbols.size, scanned_count: 0)
     skipped = []
     last_saved = Time.current
@@ -121,8 +129,11 @@ class Screen < ApplicationRecord
         last_saved = Time.current
       end
     end
-    notes << "No data for #{skipped.size} symbol(s): #{skipped.join(", ")}" if skipped.any?
-    # The counter cache is incremented in SQL, so refresh the in-memory value before the final save.
+    # Nothing at all usually means the price source is down: fail, so the job retries.
+    raise MarketData::Error, "No data for any of the #{symbols.size} symbols" if symbols.any? && skipped.size == symbols.size
+
+    notes << "#{NO_DATA}#{skipped.size} symbol(s): #{skipped.join(", ")}" if skipped.any?
+    # The counter cache is kept in SQL (and is read-only here), so refresh the in-memory value.
     self.matches_count = matches.count
     update!(status: :done)
   rescue => e
