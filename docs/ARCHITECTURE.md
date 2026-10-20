@@ -282,11 +282,23 @@ flowchart TD
   prompt editor, or set `SCREEN_PARSER_MODEL`, and screens use that provider if its key is set. For a model the
   registry doesn't list, name the provider in the prompt's metadata (`{"provider": "deepseek"}`) or
   `SCREEN_PARSER_PROVIDER`.
-- `with_schema` turns on structured output. Anthropic and OpenAI enforce the schema; DeepSeek's chat API only
-  promises *a* JSON object (RubyLLM falls back to JSON mode and logs a warning), so the prompt spells out the shape,
-  the parser reads the reply defensively, and the `Condition` validations reject anything off-schema. Same
-  boundary, whatever the model. `spec/models/screen_parser/llm_deepseek_spec.rb` checks the DeepSeek request
-  and parsing through RubyLLM's real HTTP client against a stubbed endpoint.
+- `with_schema` asks for structured output, but **whether the provider enforces the schema depends on the
+  provider and the wire protocol**:
+
+  | Provider / protocol | Schema enforced by the provider? |
+  |---|---|
+  | Anthropic, OpenAI | Yes (strict JSON schema) |
+  | DeepSeek, Responses API (`/responses`): **this app's default for DeepSeek** | Sent as `text.format: json_schema` |
+  | DeepSeek, chat completions (`SCREEN_PARSER_PROTOCOL=chat_completions`) | **No.** It only promises *a* JSON object; RubyLLM logs a warning and falls back to `json_object` mode |
+
+  Where the provider doesn't enforce it, **only the code does**: the prompt spells out the shape, the parser reads
+  the reply defensively, and the `Condition` validations drop anything off-schema. That boundary is the same for
+  every model, which is why the app was safe to run on DeepSeek before the protocol switch.
+  `ScreenParser::LLM::PROTOCOLS` holds the per-provider default; the prompt's metadata (`{"protocol": ...}`) or
+  `SCREEN_PARSER_PROTOCOL` override it. `spec/models/screen_parser/llm_deepseek_spec.rb` drives RubyLLM's real HTTP
+  client against stubbed DeepSeek endpoints for both protocols.
+- Measured: `deepseek-v4-flash` on prompt v1 passed **9/9** eval cases over chat completions (`json_object` mode),
+  on 2026-10-20. Not yet measured: the Responses default against DeepSeek's live API, and Claude.
 - The parser is injected (`Screen.from_query(query, parser:)`), which is how the tests swap in fakes. The parser is injected (`Screen.from_query(query, parser:)`), which is
   how the tests swap in fakes without a mocking library.
 - Every screen stores the raw proposal and a parser label (`rules v1`; `claude-sonnet-5-5, prompt screen-parser v3`

@@ -39,7 +39,7 @@ labelled synthetic ones if the price source can't be reached.
 Needs Ruby 3.3 (see `.ruby-version`) and, for system tests, Chrome.
 
 ```sh
-bin/setup          # bundle install, create the 4 SQLite databases, start the server
+bin/setup          # bundle install, create the 4 SQLite databases, seed (prompt, evals, admin), start the server
 bin/dev            # later: start the server (Puma + Solid Queue worker in one process)
 open http://localhost:3000
 ```
@@ -54,6 +54,11 @@ MARKET_DATA=synthetic bin/dev          # offline: deterministic fake prices inst
 ANTHROPIC_API_KEY=sk-ant-... bin/dev   # let Claude propose the parse (still validated by code)
 DEEPSEEK_API_KEY=sk-... SCREEN_PARSER_MODEL=deepseek-v4-flash bin/dev   # or DeepSeek (or any RubyLLM provider)
 ```
+
+Not every provider enforces the JSON schema the parser asks for. Anthropic and OpenAI do. DeepSeek's chat API
+doesn't (RubyLLM warns and falls back to plain JSON mode), so for DeepSeek the app uses its Responses API, which
+takes the schema; set `SCREEN_PARSER_PROTOCOL=chat_completions` to go back. Either way the `Condition`
+validations are the real boundary: anything off-schema is dropped, not trusted.
 
 The first run of a screen makes ~100 requests to Yahoo's chart API (one per ticker); after that, bars come
 from the `bars` table and each ticker is re-fetched at most once a day. If a ticker can't be fetched it is
