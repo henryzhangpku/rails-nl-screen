@@ -1,6 +1,8 @@
 # rails-nl-screen
 
-Private learning project (Henry): a plain-English stock screen in Rails 8 + Hotwire.
+By [Henry Zhang](https://www.officialhenryzhang.com/) ([GitHub](https://github.com/henryzhangpku)). Live demo: https://henryzhangpku.github.io/rails-nl-screen/
+
+A learning project: a plain-English stock screen in Rails 8 + Hotwire.
 
 Type something like
 

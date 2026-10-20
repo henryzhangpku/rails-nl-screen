@@ -154,4 +154,16 @@ textarea {
 .recent li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; padding: 0.6rem 0.8rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
 .recent a { font-family: var(--font-mono); font-size: 0.85rem; overflow-wrap: anywhere; }
 
+/* Footer */
+.sitefoot {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem 0.6rem;
+  padding-block: 1.5rem 2rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-top: 1px solid var(--rule); color: var(--ink-2); font-size: 0.88rem;
+}
+.sitefoot a { color: var(--ink); font-weight: 600; text-decoration: none; }
+.sitefoot a:hover { color: var(--accent); }
+.sitefoot .sep { color: var(--ink-2); }
+
 @media (prefers-reduced-motion: reduce) { .card { transition: none; } .card:hover { transform: none; } }

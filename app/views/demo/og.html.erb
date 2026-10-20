@@ -31,7 +31,7 @@
       <div class="mark"><img src="data:image/svg+xml,<%= ERB::Util.url_encode(Rails.root.join("public/icon.svg").read.strip) %>" width="40" height="40" alt=""><span>NL<i class="slash">/</i>Screen</span></div>
       <h1 class="og-h1">Type a stock screen the way you'd say it.</h1>
       <div class="og-prompt"><%= featured.query %></div>
-      <div class="stack-tags">RAILS 8 · HOTWIRE · SOLID QUEUE · REAL DAILY PRICES</div>
+      <div class="stack-tags">BY HENRY ZHANG · RAILS 8 · HOTWIRE · REAL DAILY PRICES</div>
     </div>
     <div class="panel">
       <header><span class="eyebrow">Ranked survivors · <%= @built_on.to_fs(:long) %></span><span><b><%= featured.matches.size %></b> <span class="muted">/ <%= featured.universe_size %></span></span></header>

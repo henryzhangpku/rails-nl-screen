@@ -4,10 +4,11 @@
     <title><%= content_for(:title) || "NL Screen" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <%= render "shared/head_icons" %>
+    <meta name="author" content="Henry Zhang">
     <% description = "Plain-English stock screens: typed into a box, parsed into whitelisted conditions, run over 100 large US stocks on real daily prices, survivors ranked. Built with Rails 8 + Hotwire." %>
     <meta name="description" content="<%= description %>">
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="NL Screen">
+    <meta property="og:site_name" content="NL Screen by Henry Zhang">
     <meta property="og:title" content="<%= content_for(:og_title) || "NL Screen: type a stock screen the way you'd say it" %>">
     <meta property="og:description" content="<%= description %>">
     <meta property="og:url" content="<%= @site_url %><%= @page_path %>">
@@ -36,5 +37,6 @@
       </div>
       <%= yield %>
     </main>
+    <%= render "shared/footer" %>
   </body>
 </html>
