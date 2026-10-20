@@ -58,6 +58,21 @@ RSpec.describe Screen do
       expect(screen.notes.first).to match(/rule-based parser was used/)
     end
 
+    it "keeps at most #{described_class::MAX_CONDITIONS} conditions, and says so" do
+      many = Module.new do
+        def self.label = "many"
+        def self.parse(_text)
+          ScreenParser::Result.new((20..32).map { |value| { indicator: "rsi", operator: "below", value: value } }, [])
+        end
+      end
+
+      screen = described_class.from_query("a very long screen", parser: many)
+
+      expect(screen.conditions.map(&:value)).to eq (20..29).map(&:to_f)
+      expect(screen.notes).to eq [ "Kept the first 10 conditions" ]
+      expect(screen.save).to be true
+    end
+
     it "is invalid when nothing in the query is recognised" do
       expect(described_class.from_query("good vibes only", parser: ScreenParser)).not_to be_valid
     end

@@ -41,6 +41,7 @@ class Screen < ApplicationRecord
   after_update_commit -> { broadcast_refresh_to self }
 
   ATTRIBUTES = %i[indicator timeframe operator period value].freeze
+  MAX_CONDITIONS = 10 # each one is evaluated against every symbol in the universe
 
   # Shown as "Try:" buttons on the form, and used to build the static demo.
   EXAMPLES = [
@@ -67,10 +68,13 @@ class Screen < ApplicationRecord
       end
 
       condition = Condition.new(attrs.slice(*ATTRIBUTES).merge(screen: screen, position: screen.conditions.size))
-      if condition.valid?
-        screen.conditions << condition
-      else
+      if condition.invalid?
         screen.notes << "Dropped #{attrs.compact.values.join(" ")}: #{condition.errors.full_messages.to_sentence}"
+      elsif screen.conditions.size == MAX_CONDITIONS
+        screen.notes << "Kept the first #{MAX_CONDITIONS} conditions"
+        break
+      else
+        screen.conditions << condition
       end
     end
     proposal.unrecognized.each { |clause| screen.notes << "Didn't understand \"#{clause}\"" }
