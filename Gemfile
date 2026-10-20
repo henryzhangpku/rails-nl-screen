@@ -50,6 +50,7 @@ group :development, :test do
 
   # Tests: RSpec
   gem "rspec-rails", "~> 8.0"
+  gem "factory_bot_rails"
 end
 
 group :development do
@@ -60,8 +61,10 @@ end
 group :test do
   # Use system testing [https://guides.rubyonrails.org/testing.html#system-testing]
   gem "capybara"
-  gem "selenium-webdriver"
+  gem "cuprite" # Capybara driver that talks to Chrome directly (Ferrum, CDP); no chromedriver
   gem "webmock"
 end
 
 gem "ruby_llm", "~> 2.1"
+
+gem "kaminari", "~> 1.2"

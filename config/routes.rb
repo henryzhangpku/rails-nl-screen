@@ -1,5 +1,5 @@
 Rails.application.routes.draw do
-  resources :screens, only: %i[new create show]
+  resources :screens, only: %i[index new create show destroy]
   root "screens#new"
 
   # Health check for load balancers / Kamal.

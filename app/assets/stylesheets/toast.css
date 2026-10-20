@@ -1,0 +1,15 @@
+/* Toast notifications, rendered into #toast by the layout or a Turbo Stream. */
+.ns-toast-slot {
+  position: fixed; z-index: 20; display: grid; gap: 0.5rem;
+  top: calc(env(safe-area-inset-top, 0px) + 1rem); right: max(16px, env(safe-area-inset-right, 0px));
+  max-width: min(24rem, calc(100vw - 32px));
+}
+.ns-toast {
+  display: flex; gap: 0.75rem; align-items: center; padding: 0.75rem 0.9rem;
+  background: var(--ns-surface); color: var(--ns-ink); border: 1px solid var(--ns-rule); border-left: 3px solid var(--ns-accent);
+  border-radius: 8px; box-shadow: 0 10px 30px -18px rgba(16, 24, 40, 0.5); font-size: 0.9rem;
+}
+.ns-toast--success { border-left-color: var(--ns-up); }
+.ns-toast--error { border-left-color: var(--ns-down); }
+.ns-toast__message { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ns-toast__close { font-size: 1.1rem; line-height: 1; color: var(--ns-ink-2); background: none; border: 0; cursor: pointer; padding: 0.2rem; }

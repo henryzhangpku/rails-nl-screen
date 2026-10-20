@@ -5,6 +5,13 @@ class Screen < ApplicationRecord
   has_many :matches, -> { order(score: :desc, id: :asc) }, dependent: :destroy # ranked, strongest first
 
   enum :status, %w[pending running done failed].index_by(&:itself)
+  SOURCES = %w[rules claude].freeze
+
+  # History filters. Each scope ignores a blank argument, so the controller can chain them.
+  scope :matching, ->(text) { where("query LIKE ?", "%#{sanitize_sql_like(text)}%") if text.present? }
+  scope :with_status, ->(status) { where(status: status) if status.in?(statuses.keys) }
+  scope :from_source, ->(source) { where(source: source) if source.in?(SOURCES) }
+  scope :with_matches, ->(flag = true) { where(matches_count: 1..) if flag.present? }
 
   validates :query, presence: true
   validate :understood_something
@@ -80,6 +87,8 @@ class Screen < ApplicationRecord
       end
     end
     notes << "No data for #{skipped.size} symbol(s): #{skipped.join(", ")}" if skipped.any?
+    # The counter cache is incremented in SQL, so refresh the in-memory value before the final save.
+    self.matches_count = matches.count
     update!(status: :done)
   rescue => e
     update!(status: :failed, error_message: e.message)

@@ -1,5 +1,5 @@
 /* Ranked results table and the per-row score bar. */
-.ns-table-wrap { overflow-x: auto; border: 1px solid var(--ns-rule); border-radius: 8px; background: var(--ns-surface); }
+.ns-table-wrap { position: relative; overflow-x: auto; border: 1px solid var(--ns-rule); border-radius: 8px; background: var(--ns-surface); }
 .ns-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
 .ns-table__head,
 .ns-table__cell { padding: 0.65rem 0.8rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--ns-rule); white-space: nowrap; }

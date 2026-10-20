@@ -1,0 +1,47 @@
+<% content_for :title, "Screen history" %>
+
+<section class="ns-stack">
+  <span class="ns-text--eyebrow">History</span>
+  <h1>Past screens</h1>
+  <p class="ns-text--lede">Search, filter and sort every screen you've run. The table updates in place; the URL keeps up, so the back button works.</p>
+</section>
+
+<%# A plain GET form. It targets the "screens" frame and advances the URL; Stimulus only decides when to submit. %>
+<%= form_with url: screens_path, method: :get, class: "ns-filters",
+      data: { controller: "filter", turbo_frame: "screens", turbo_action: "advance" } do |form| %>
+  <%= form.search_field :q, value: params[:q], placeholder: "Search queries…", class: "ns-filters__search",
+        aria: { label: "Search queries" }, data: { action: "input->filter#submitLater" } %>
+  <%= form.select :status, Screen.statuses.keys.map { |s| [ s.humanize, s ] }, { include_blank: "Any status", selected: params[:status] },
+        class: "ns-filters__select", aria: { label: "Status" }, data: { action: "change->filter#submit" } %>
+  <%= form.select :source, Screen::SOURCES.map { |s| [ s == "claude" ? "Claude" : "Rules", s ] }, { include_blank: "Any parser", selected: params[:source] },
+        class: "ns-filters__select", aria: { label: "Parser" }, data: { action: "change->filter#submit" } %>
+  <label class="ns-filters__check">
+    <%= form.check_box :with_matches, { checked: params[:with_matches].present?, data: { action: "change->filter#submit" } }, "1", nil %>
+    With matches
+  </label>
+  <%= hidden_field_tag :sort, params[:sort] if params[:sort].present? %>
+  <%= hidden_field_tag :direction, params[:direction] if params[:direction].present? %>
+<% end %>
+
+<%= turbo_frame_tag "screens", class: "ns-history" do %>
+  <% if @screens.any? %>
+    <div class="ns-table-wrap">
+      <table class="ns-table">
+        <thead>
+          <tr>
+            <%= sortable_header "Run", :created_at %>
+            <%= sortable_header "Query", :query %>
+            <%= sortable_header "Status", :status %>
+            <th class="ns-table__head">Parser</th>
+            <%= sortable_header "Matches", :matches_count %>
+            <th class="ns-table__head"><span class="ns-visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody class="ns-table__body"><%= render @screens %></tbody>
+      </table>
+    </div>
+    <%= paginate @screens %>
+  <% else %>
+    <p class="ns-history__empty">No screens match these filters.</p>
+  <% end %>
+<% end %>

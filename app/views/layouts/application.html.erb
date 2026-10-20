@@ -6,6 +6,8 @@
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
 
+    <%# Turbo 8 animates page changes with the browser's View Transitions API when this is present. %>
+    <meta name="view-transition" content="same-origin">
     <%= yield :head %>
 
     <%= render "shared/head_icons" %>
@@ -20,9 +22,13 @@
   <body>
     <header class="ns-topbar">
       <%= link_to root_path, class: "ns-topbar__brand" do %><img src="/icon.svg" alt="" width="22" height="22"><span>NL<i class="ns-topbar__slash">/</i>Screen</span><% end %>
-      <span class="ns-topbar__meta">plain-English stock screens · Rails 8 + Hotwire</span>
+      <nav class="ns-topbar__nav" aria-label="Main">
+        <%= link_to "New screen", new_screen_path, class: "ns-topbar__link", aria: { current: ("page" if current_page?(new_screen_path) || current_page?(root_path)) } %>
+        <%= link_to "History", screens_path, class: "ns-topbar__link", aria: { current: ("page" if current_page?(screens_path)) } %>
+      </nav>
       <%= render "shared/repo_link" %>
     </header>
+    <div id="toast" class="ns-toast-slot"><%= render "shared/toast" %></div>
     <main class="ns-page">
       <%= yield %>
     </main>

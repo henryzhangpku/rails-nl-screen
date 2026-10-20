@@ -1,6 +1,6 @@
 <section class="ns-stack">
   <h1>Here's what I understood</h1>
-  <div class="ns-prompt"><%= screen.query %></div>
+  <div class="ns-prompt" style="view-transition-name: <%= dom_id(screen) %>"><%= screen.query %></div>
   <ul class="ns-chips">
     <% screen.conditions.each do |condition| %>
       <li class="ns-chip"><%= condition.label.delete_suffix(" (weekly)") %><% if condition.timeframe == "weekly" %><span class="ns-chip__timeframe">weekly</span><% end %></li>

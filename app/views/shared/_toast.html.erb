@@ -1,0 +1,7 @@
+<%# Rendered in the layout's #toast slot, and replaced there by Turbo Streams (e.g. after a delete). %>
+<% if (toast = flash[:toast]) %>
+  <div class="ns-toast ns-toast--<%= toast["status"] %>" role="status" data-controller="toast">
+    <span class="ns-toast__message"><%= toast["message"] %></span>
+    <button type="button" class="ns-toast__close" data-action="toast#dismiss" aria-label="Dismiss">×</button>
+  </div>
+<% end %>

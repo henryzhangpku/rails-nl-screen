@@ -1,0 +1,14 @@
+<%# Kaminari pager, restyled. Page links stay in the Turbo Frame and advance the URL. %>
+<%= paginator.render do %>
+  <nav class="ns-pager" aria-label="Pages">
+    <%= prev_page_tag unless current_page.first? %>
+    <% each_page do |page| %>
+      <% if page.display_tag? %>
+        <%= page_tag page %>
+      <% elsif !page.was_truncated? %>
+        <%= gap_tag %>
+      <% end %>
+    <% end %>
+    <%= next_page_tag unless current_page.last? || current_page.out_of_range? %>
+  </nav>
+<% end %>

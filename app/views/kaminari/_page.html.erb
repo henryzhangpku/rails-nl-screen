@@ -1,0 +1,5 @@
+<% if page.current? %>
+  <span class="ns-pager__page ns-pager__page--current" aria-current="page"><%= page %></span>
+<% else %>
+  <%= link_to page, url, class: "ns-pager__page", rel: page.rel, data: { turbo_action: "advance" } %>
+<% end %>
