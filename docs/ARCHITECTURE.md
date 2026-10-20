@@ -297,8 +297,9 @@ flowchart TD
   `ScreenParser::LLM::PROTOCOLS` holds the per-provider default; the prompt's metadata (`{"protocol": ...}`) or
   `SCREEN_PARSER_PROTOCOL` override it. `spec/models/screen_parser/llm_deepseek_spec.rb` drives RubyLLM's real HTTP
   client against stubbed DeepSeek endpoints for both protocols.
-- Measured: `deepseek-v4-flash` on prompt v1 passed **9/9** eval cases over chat completions (`json_object` mode),
-  on 2026-10-20. Not yet measured: the Responses default against DeepSeek's live API, and Claude.
+- Measured against DeepSeek's live API, `deepseek-v4-flash` on prompt v1, 2026-10-20: **9/9** over the Responses
+  API (schema enforced, no fallback warning) and **9/9** over chat completions (`json_object` mode). Not yet
+  measured: Claude.
 - The parser is injected (`Screen.from_query(query, parser:)`), which is how the tests swap in fakes. The parser is injected (`Screen.from_query(query, parser:)`), which is
   how the tests swap in fakes without a mocking library.
 - Every screen stores the raw proposal and a parser label (`rules v1`; `claude-sonnet-5-5, prompt screen-parser v3`
