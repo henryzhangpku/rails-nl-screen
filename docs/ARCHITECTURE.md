@@ -36,7 +36,7 @@ Suggested reading order for the code: `config/routes.rb` → `app/controllers/sc
 | Background work | Active Job on **Solid Queue**, run inside Puma | `app/jobs/run_screen_job.rb`, `config/queue.yml` |
 | Caching | **Solid Cache** (cache entries in a SQLite table) | `app/models/bar.rb`, `config/cache.yml` |
 | Real-time | Action Cable on **Solid Cable**, Turbo Streams and Turbo 8 page refreshes | `app/models/match.rb`, `app/models/screen.rb`, `config/cable.yml` |
-| Front end | Hotwire: Turbo Drive, Turbo Streams, one Stimulus controller | `app/views/**`, `app/javascript/controllers/examples_controller.js` |
+| Front end | Hotwire: Turbo Drive, Frames and Streams, three small Stimulus controllers | `app/views/**`, `app/javascript/controllers/*_controller.js` |
 | JavaScript delivery | **Importmaps** (no bundler, no `node_modules`) | `config/importmap.rb` |
 | CSS / assets | **Propshaft** serving plain CSS, one file per component, BEM names (`ns-` prefix) | `app/assets/stylesheets/*.css` |
 | External APIs | Net::HTTP (Yahoo chart API), **RubyLLM** (optional; DeepSeek by default, any provider: OpenAI, Gemini, …) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/llm.rb` |
@@ -69,7 +69,7 @@ flowchart TB
   end
 
   subgraph SQLite["SQLite files in storage/"]
-    DB1[("primary<br/>screens, conditions,<br/>matches, bars")]
+    DB1[("primary<br/>screens, conditions, matches,<br/>bars, users, prompt_engine_*")]
     DB2[("queue<br/>solid_queue_*")]
     DB3[("cache<br/>solid_cache_entries")]
     DB4[("cable<br/>solid_cable_messages")]
@@ -196,8 +196,9 @@ Rails features this exercises:
   default everywhere, including in the static demo.
 - **`enum :status`** with string values gives `screen.done?`, `screen.running!` and `Screen.failed` for free.
 - **JSON columns** (`notes`, `proposal`, `details`) for small structured blobs that are never queried.
-- **Constraints in the database, not just the model**: `null: false`, defaults, and a unique index on
-  `bars (symbol, date)`, which is what makes `upsert_all` idempotent.
+- **Constraints in the database, not just the model**: `null: false`, defaults, a unique index on
+  `bars (symbol, date)`, which is what makes `upsert_all` idempotent, and one on `matches (screen_id, symbol)`,
+  so a screen can't match a symbol twice.
 - **`upsert_all`**: one statement inserts or updates two years of bars for a symbol.
 
 ---
@@ -261,7 +262,7 @@ flowchart TD
   E -- no --> R["ScreenParser (regex rules)<br/>deterministic, offline"]
   E -- yes --> P["Prompt from PromptEngine<br/>(active 'screen-parser' record,<br/>else the prompt in code)"]
   P --> L["ScreenParser::LLM<br/>any RubyLLM provider<br/>schema built from Condition::SPECS"]
-  L -- "error / refusal" --> R
+  L -- "API / network error,<br/>unusable reply" --> R
   L --> PR["Proposal: conditions + unrecognized"]
   R --> PR
   PR --> AU["Stored on the screen:<br/>proposal JSON + parser label"]
@@ -297,10 +298,18 @@ flowchart TD
   `ScreenParser::LLM::PROTOCOLS` holds the per-provider default; the prompt's metadata (`{"protocol": ...}`) or
   `SCREEN_PARSER_PROTOCOL` override it. `spec/models/screen_parser/llm_deepseek_spec.rb` drives RubyLLM's real HTTP
   client against stubbed DeepSeek endpoints for both protocols.
-- Measured against DeepSeek's live API, `deepseek-v4-flash` on prompt v1, 2026-10-20: **9/9** over the Responses
-  API (schema enforced, no fallback warning) and **9/9** over chat completions (`json_object` mode).
-- The parser is injected (`Screen.from_query(query, parser:)`), which is how the tests swap in fakes. The parser is injected (`Screen.from_query(query, parser:)`), which is
-  how the tests swap in fakes without a mocking library.
+- Measured against DeepSeek's live API with `bin/rails prompts:eval`, `deepseek-v4-flash`, run 2026-10-20 on the
+  Mac Studio: **9/9** on both prompt v1 and v2 over the Responses API (schema enforced, no fallback warning), and
+  **9/9** on v1 over chat completions (`json_object` mode).
+- What counts as "the LLM failed" is a closed list: `RubyLLM::Error` (the provider's API errors), `Faraday::Error`
+  (the network), `JSON::ParserError`, and `ScreenParser::LLM::Error`, whose subclasses name the two unusable
+  replies: `IncompleteResponse` (the model stopped early) and `MalformedResponse` (no `conditions` array). Those
+  fall back to the rules with a note; anything else is a bug and raises.
+- An off-schema condition can't crash the page: `Screen.from_query` drops one whose attributes aren't scalars
+  (`"value": [30]`, `"period": {}`) with a note before `Condition` sees it, and keeps at most
+  `Screen::MAX_CONDITIONS` (10), noting "Kept the first 10 conditions".
+- The parser is injected (`Screen.from_query(query, parser:)`), which is how the tests swap in fakes without a
+  mocking library.
 - Every screen stores the raw proposal and a parser label (`rules v1`; `deepseek-v4-flash, prompt screen-parser v3`
   when the prompt came from PromptEngine; or the model plus a fingerprint of the in-code prompt and schema), so any
   result can be traced back to exactly what proposed it.
@@ -313,7 +322,7 @@ creates an immutable `PromptVersion`), a playground and evaluations, all at `/pr
 
 ```ruby
 # app/models/screen_parser/llm.rb
-version ||= PromptEngine::Prompt.active.find_by(name: "screen-parser")&.current_version
+version ||= PromptEngine::Prompt.active.find_by(slug: "screen-parser")&.current_version
 message = PromptEngine::VariableDetector.new(version.content).render(query: text)   # "{{query}}" -> the query
 chat.with_instructions(version.system_message).with_schema(SCHEMA).ask(message)
 ```
@@ -389,29 +398,46 @@ written into your app, which you then own and edit.
 | Generated | What it is |
 |---|---|
 | `User` | `has_secure_password` (bcrypt), `normalizes :email_address` |
-| `Session` | one row per signed-in browser (user agent, IP); signing out deletes it |
+| `Session` | one row per signed-in browser (user agent, IP); signing out deletes it. Here sessions also expire after 30 days (`Session::LIFETIME`, the `active` scope, and the cookie's `expires`) |
 | `Current` | `ActiveSupport::CurrentAttributes`: per-request globals (`Current.session`, `Current.user`) |
 | `Authentication` concern | `before_action :require_authentication` in `ApplicationController`; `allow_unauthenticated_access` opts out; the session id is in a signed, `httponly` cookie |
 | `SessionsController` | sign in/out, with `rate_limit to: 10, within: 3.minutes` on sign-in (built into Rails 8) |
 
 Changes made here: the password-reset controller and the Action Cable connection were deleted (this app has no
-mailer, and live updates are public); `ScreensController` says `allow_unauthenticated_access`, so only the
-prompt editor needs an account; after sign-in you land on `/prompts`.
+mailer, and live updates are public); `ScreensController` says
+`allow_unauthenticated_access only: %i[index new create show]`, so running and browsing screens is public
+while deleting one needs the sign-in, and `create` has its own `rate_limit to: 10, within: 1.minute` (each one
+may call a paid LLM and queues a full scan). After sign-in you land on `/prompts`.
 
-The engine has its own `ApplicationController` and knows nothing about our login, so the guard goes in the router:
+The engine has its own `ApplicationController` (it inherits from `ActionController::Base`, not ours), so it
+knows nothing about our login. It is guarded twice. The router doesn't even route `/prompts` without a session:
 
 ```ruby
 # config/routes.rb
-constraints ->(request) { Session.exists?(id: request.cookie_jar.signed[:session_id]) } do
+constraints ->(request) { Session.active.exists?(id: request.cookie_jar.signed[:session_id]) } do
   mount PromptEngine::Engine => "/prompts", as: :prompt_engine
 end
 get "prompts(/*path)", to: redirect("/session/new", status: 302)   # everyone else
 ```
 
-The same trick protects Mission Control, Sidekiq Web or any other mounted dashboard. The fallback is a 302 on
-purpose: browsers cache a 301, and would keep bouncing you to the sign-in page after you'd signed in.
-`bin/setup` seeds one admin (`admin@example.com` / `nl-screen-admin` in development; set `ADMIN_PASSWORD`
-anywhere else).
+And the engine's controllers require the sign-in themselves, through the load hook PromptEngine provides for
+this, so the admin stays closed if the constraint is ever removed (a request spec mounts it without one):
+
+```ruby
+# config/initializers/prompt_engine.rb
+ActiveSupport.on_load(:prompt_engine_application_controller) do
+  include Authentication
+end
+```
+
+The hook runs each time the engine's controller loads, so it survives code reloading, which a one-off
+`PromptEngine::ApplicationController.include` in an initializer would not. Inside the engine, route helpers are
+the engine's, which is why `Authentication` redirects to `main_app.new_session_path`.
+
+The route-constraint trick protects Mission Control, Sidekiq Web or any other mounted dashboard. The fallback is
+a 302 on purpose: browsers cache a 301, and would keep bouncing you to the sign-in page after you'd signed in.
+There is one admin user, by design (no sign-up, no roles): `bin/setup` seeds it (`admin@example.com` /
+`nl-screen-admin` in development; set `ADMIN_PASSWORD` anywhere else).
 
 ---
 
@@ -419,19 +445,21 @@ anywhere else).
 
 > **In 2007** BackgrounDRb or a cron job running `script/runner`. Later, Resque/Sidekiq with Redis. **Now** Active Job is the interface and Solid Queue the default backend, using the database you already have.
 
-- `RunScreenJob` is three lines; it calls `screen.run`. The work stays in the model, which keeps it testable
-  without a queue.
+- `RunScreenJob` calls `screen.run`; the work stays in the model, which keeps it testable without a queue. The
+  job only states its failure policy: `discard_on ActiveJob::DeserializationError` (the screen was deleted
+  before the job ran) and `retry_on MarketData::Error, attempts: 3` (no symbol had any data, so the price
+  source is probably down).
 - **Solid Queue** stores jobs in the `queue` SQLite database. No Redis.
 - In development (and optionally in production via `SOLID_QUEUE_IN_PUMA`) the Solid Queue supervisor runs
   **inside Puma** as a plugin (`config/puma.rb`), so `bin/dev` is a single command and a single process tree.
 - Tests use the `:test` adapter (assert a job was enqueued); the system test switches to `:inline` so the
   whole flow runs inside one request.
-- `Screen#run` rescues data errors per symbol (a ticker with no data is recorded as a gap and skipped), and
-  marks the screen `failed` on anything unexpected, then re-raises so the job's failure is visible in
-  Solid Queue.
-
-Known gap, deliberately left visible: if the job were retried after creating some matches, it would create
-them again. The fix is to clear matches at the start of `run`, or add a unique index on `(screen_id, symbol)`.
+- `Screen#run` rescues data errors per symbol (a ticker with no data is recorded as a gap and skipped), raises
+  if *every* symbol failed, and marks the screen `failed` on anything unexpected, then re-raises so the job's
+  failure is visible in Solid Queue.
+- **Retries are safe.** `run` starts by deleting the screen's matches (and resetting the counter cache), so a
+  retried or repeated run starts over, and a unique index on `matches (screen_id, symbol)` makes a duplicate
+  impossible rather than just unlikely.
 
 ---
 
@@ -523,7 +551,7 @@ loads ES modules directly; there is no webpack, esbuild or `node_modules`. `bin/
 - **Sources are swappable modules** with one method, `fetch(symbol)`. `MarketData::Yahoo` is the default;
   `MARKET_DATA=synthetic` switches to deterministic fake prices for offline work.
 - **Failures are data, not crashes.** Network and parse errors become `MarketData::Error`; the scan records
-  the symbol as a gap and continues.
+  the symbol as a gap and continues. Only when every symbol fails does the run fail, so the job retries.
 
 Two real data-quality events surfaced while building this, both handled by that design:
 
@@ -542,7 +570,7 @@ Two real data-quality events surfaced while building this, both handled by that 
 
 | Database | Holds | Used by |
 |---|---|---|
-| `primary` | screens, conditions, matches, bars | the app |
+| `primary` | screens, conditions, matches, bars, users, sessions, `prompt_engine_*` | the app and PromptEngine |
 | `queue` | `solid_queue_*` tables | Solid Queue |
 | `cache` | `solid_cache_entries` | Solid Cache |
 | `cable` | `solid_cable_messages` | Solid Cable |
@@ -608,7 +636,7 @@ flowchart LR
   (`create(:screen, :with_matches, matches: 3)`); the parser and scan specs still use injected fakes.
 - **System specs use Cuprite**, which drives Chrome directly over the DevTools protocol, so there is no
   chromedriver to keep in step with the browser. They cover running a screen end to end, and the history page:
-  search as you type, sorting, and delete with a toast. The preview-card screenshot uses the same engine
+  search as you type, sorting, and (signed in) delete with a toast. The preview-card screenshot uses the same engine
   (Ferrum).
 - **CI** (`.github/workflows/ci.yml`) runs Brakeman, bundler-audit, importmap audit, RuboCop (omakase style),
   the test suite, and the system test on every push.
@@ -652,7 +680,7 @@ flowchart LR
 | SQLite for everything | Single node, low write volume, zero ops | Postgres for the primary DB; keep Solid Queue/Cache, consider Redis for high-volume pub/sub |
 | Yahoo's unofficial API | Free, good enough for a demo | Licensed data with corporate actions and point-in-time history |
 | Today's large caps as the universe | Simple and recognisable | Point-in-time universe membership, to avoid survivorship bias in any backtest |
-| Retry would duplicate matches | Jobs aren't retried today | Clear matches at start of run or add a unique index |
+| A retry rescans every symbol | `run` clears the screen's matches and starts over; a scan takes seconds | Resume from the last scanned symbol, upserting on the `(screen_id, symbol)` index |
 
 The design choice that scales without change is the boundary in section 6: whatever proposes conditions
 (regexes, a model, a user), only the whitelist decides what runs, and every proposal is stored.
@@ -814,8 +842,9 @@ Each one touches a different part of the stack. All of them can be done with the
 1. **Add an indicator end to end.** Bollinger Bands: a pure function in `Indicators` with a known-value test,
    a `SPECS` entry, an `evaluate` branch, and a parser rule with a test. Notice the LLM schema updates by
    itself because it is generated from `SPECS`.
-2. **Fix the retry gap.** Add a unique index on `matches (screen_id, symbol)` with a migration, make `run`
-   idempotent, and write a test that runs a screen twice.
+2. **Resume instead of restart.** A retried `run` deletes the screen's matches and rescans everything. Make it
+   pick up where it stopped: upsert matches on the `(screen_id, symbol)` unique index, remove the ones that no
+   longer pass, and keep the spec that runs a screen twice green. What should the live table show meanwhile?
 3. **Fan out the job.** Split `RunScreenJob` into one job per batch of 20 symbols. What has to change so
    progress and the "done" status are still correct? (Hint: count finished batches.)
 4. **Edit in place with a Turbo Frame.** Let a screen be renamed from the history table: wrap the query cell
