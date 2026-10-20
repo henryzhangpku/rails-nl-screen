@@ -29,6 +29,8 @@ Suggested reading order for the code: `config/routes.rb` → `app/controllers/sc
 |---|---|---|
 | Web server | Puma (+ Thruster in production) | `config/puma.rb`, `Dockerfile` |
 | Routing / HTTP | `resources :screens`, one controller | `config/routes.rb`, `app/controllers/screens_controller.rb` |
+| Sign-in | Rails 8 **authentication generator** (`has_secure_password`, a `Session` model, signed cookie) | `app/controllers/concerns/authentication.rb`, `app/models/session.rb` |
+| Engines | **PromptEngine** mounted at `/prompts`: the Claude prompt as versioned data, behind sign-in | `config/routes.rb`, `db/seeds.rb` |
 | Domain logic | Active Record models and plain Ruby objects, autoloaded by Zeitwerk | `app/models/*` |
 | Persistence | SQLite via Active Record, 4 databases | `config/database.yml`, `db/migrate/*` |
 | Background work | Active Job on **Solid Queue**, run inside Puma | `app/jobs/run_screen_job.rb`, `config/queue.yml` |
@@ -40,6 +42,7 @@ Suggested reading order for the code: `config/routes.rb` → `app/controllers/sc
 | External APIs | Net::HTTP (Yahoo chart API), **RubyLLM** (optional, for Claude) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/claude.rb` |
 | Tests | **RSpec** (rspec-rails), FactoryBot, WebMock; system specs with **Cuprite** (headless Chrome over CDP) | `spec/**` |
 | CI | GitHub Actions: Brakeman, bundler-audit, importmap audit, RuboCop, tests | `.github/workflows/ci.yml` |
+| Dev tooling | **annotaterb** (schema comments at the top of each model), **rails_live_reload** (browser refreshes on save) | `.annotaterb.yml`, `lib/tasks/annotate_rb.rake` |
 | Static demo | Rake task + `ApplicationController.render` + GitHub Pages | `lib/tasks/demo.rake`, `.github/workflows/pages.yml` |
 | Deployment (configured) | **Kamal** + Docker | `config/deploy.yml`, `.kamal/` |
 
@@ -256,7 +259,8 @@ code accepts, and anything that still doesn't fit is dropped with a visible note
 flowchart TD
   T["Plain-English query"] --> E{"ANTHROPIC_API_KEY set?"}
   E -- no --> R["ScreenParser (regex rules)<br/>deterministic, offline"]
-  E -- yes --> L["ScreenParser::Claude<br/>structured JSON output<br/>schema built from Condition::SPECS"]
+  E -- yes --> P["Prompt from PromptEngine<br/>(active 'screen-parser' record,<br/>else the prompt in code)"]
+  P --> L["ScreenParser::Claude<br/>structured JSON output<br/>schema built from Condition::SPECS"]
   L -- "error / refusal" --> R
   L --> PR["Proposal: conditions + unrecognized"]
   R --> PR
@@ -276,8 +280,70 @@ flowchart TD
   a provider-agnostic client; `with_schema` turns on structured output, so the reply is guaranteed to parse,
   and swapping providers is a one-line change. The parser is injected (`Screen.from_query(query, parser:)`), which is
   how the tests swap in fakes without a mocking library.
-- Every screen stores the raw proposal and a parser label (`rules v1`, or the model name plus a fingerprint of
-  the prompt and schema), so any result can be traced back to exactly what proposed it.
+- Every screen stores the raw proposal and a parser label (`rules v1`; `claude-sonnet-5-5, prompt screen-parser v3`
+  when the prompt came from PromptEngine; or the model plus a fingerprint of the in-code prompt and schema), so any
+  result can be traced back to exactly what proposed it.
+
+### Prompts as data: PromptEngine
+
+The instructions Claude gets are not just a constant in a Ruby file. They live in a database row managed by
+**PromptEngine**, a mountable Rails engine: an editor, a version history (every save of a versioned field
+creates an immutable `PromptVersion`), a playground and evaluations, all at `/prompts`.
+
+```ruby
+# app/models/screen_parser/claude.rb
+prompt = PromptEngine::Prompt.active.find_by(name: "screen-parser")
+rendered = PromptEngine.render("screen-parser", variables: { query: text })
+# => { system_message: "You translate…", content: "RSI under 30…", model: "claude-sonnet-5-5", … }
+chat.with_instructions(rendered[:system_message]).with_schema(SCHEMA).ask(rendered[:content])
+```
+
+- The record is created by `db/seeds.rb` from `ScreenParser::Claude::SYSTEM_PROMPT`, with the user message
+  as a template (`{{query}}`). If the record is missing or archived, the in-code prompt is used, so tests and a
+  fresh checkout behave the same.
+- What PromptEngine does **not** own: the JSON schema and the validations. You can rewrite the prompt in the
+  browser, but the schema is still built from `Condition::SPECS` and every proposal still goes through the
+  `Condition` validations. Editable wording, fixed boundary.
+- Engine basics, in 2007 terms: an engine is a plugin that ships its own models, controllers, views, routes and
+  migrations. `isolate_namespace PromptEngine` keeps its tables (`prompt_engine_*`), routes and helpers apart
+  from the app's. Its migrations run from the gem (its `append_migrations` initializer adds them to the app's
+  migration paths), so `bin/rails db:migrate` is the whole install. Its plain BEM CSS is served by Propshaft
+  straight from the gem.
+- PromptEngine's settings page can store API keys, encrypted with `encrypts :anthropic_api_key` (Active Record
+  encryption, Rails 7+). `config/initializers/active_record_encryption.rb` derives those keys from
+  `secret_key_base` unless real ones are in credentials. This app still reads the key from `ANTHROPIC_API_KEY`.
+
+### Signing in: the Rails 8 authentication generator
+
+Rails 8 ships `bin/rails generate authentication`: not a gem like Devise, but about 150 lines of ordinary code
+written into your app, which you then own and edit.
+
+| Generated | What it is |
+|---|---|
+| `User` | `has_secure_password` (bcrypt), `normalizes :email_address` |
+| `Session` | one row per signed-in browser (user agent, IP); signing out deletes it |
+| `Current` | `ActiveSupport::CurrentAttributes`: per-request globals (`Current.session`, `Current.user`) |
+| `Authentication` concern | `before_action :require_authentication` in `ApplicationController`; `allow_unauthenticated_access` opts out; the session id is in a signed, `httponly` cookie |
+| `SessionsController` | sign in/out, with `rate_limit to: 10, within: 3.minutes` on sign-in (built into Rails 8) |
+
+Changes made here: the password-reset controller and the Action Cable connection were deleted (this app has no
+mailer, and live updates are public); `ScreensController` says `allow_unauthenticated_access`, so only the
+prompt editor needs an account; after sign-in you land on `/prompts`.
+
+The engine has its own `ApplicationController` and knows nothing about our login, so the guard goes in the router:
+
+```ruby
+# config/routes.rb
+constraints ->(request) { Session.exists?(id: request.cookie_jar.signed[:session_id]) } do
+  mount PromptEngine::Engine => "/prompts", as: :prompt_engine
+end
+get "prompts(/*path)", to: redirect("/session/new", status: 302)   # everyone else
+```
+
+The same trick protects Mission Control, Sidekiq Web or any other mounted dashboard. The fallback is a 302 on
+purpose: browsers cache a 301, and would keep bouncing you to the sign-in page after you'd signed in.
+`bin/setup` seeds one admin (`admin@example.com` / `nl-screen-admin` in development; set `ADMIN_PASSWORD`
+anywhere else).
 
 ---
 
@@ -582,6 +648,9 @@ then needs its own types, fetching, caching and rendering code.
 | Styling | Plain CSS, BEM + prefix, one file per component, via Propshaft | Tailwind / CSS modules | |
 | Autoloading | Zeitwerk (path = constant) | Explicit `import` | Python is explicit; Rails is convention. |
 | Config / secrets | `credentials.yml.enc` + env vars | `.env` + `pydantic-settings` | |
+| Auth | Generated `Authentication` concern + `has_secure_password` | FastAPI `Depends(current_user)` + passlib; NextAuth/Auth.js | Rails generates the code into your app; you own it. |
+| Prompt management | PromptEngine (mounted engine, versions in SQLite) | Langfuse / PromptLayer (hosted), or prompts in git | An engine is a full sub-app you mount with one route; Python has no direct equivalent. |
+| Plugins / sub-apps | Mountable engines (`mount X::Engine => "/x"`) | FastAPI `include_router` / mounted ASGI apps; Django apps | Engines bring their own migrations, views and assets. |
 | Tests | RSpec + FactoryBot; system specs with Cuprite | pytest (+ factory_boy), Playwright for E2E | `let` ≈ pytest fixtures; Playwright ≈ system tests. |
 | Lint / security | RuboCop, Brakeman, bundler-audit | Ruff, mypy/pyright, Bandit, pip-audit | |
 | LLM call | RubyLLM, `with_schema` built from `SPECS` | `anthropic` Python SDK (or LiteLLM), schema from Pydantic (`model_json_schema()`) | Python is nicer here: the Pydantic model *is* the schema and the validator. |
@@ -688,5 +757,8 @@ Each one touches a different part of the stack. All of them can be done with the
    calling a small endpoint that renders the `_understood` partial as HTML.
 6. **Schedule a refresh.** Use `config/recurring.yml` (Solid Queue's cron) to pre-fetch bars every weekday
    after the US close.
-7. **Deploy it.** Point `config/deploy.yml` at a small VPS, run `bin/rails credentials:edit` to create a
+7. **Ship a prompt change safely.** Sign in, edit the screen-parser prompt at `/prompts`, run a screen, and
+   check the new version in its audit line. Then add an eval set in PromptEngine with the five
+   `Screen::EXAMPLES` and compare versions before activating one.
+8. **Deploy it.** Point `config/deploy.yml` at a small VPS, run `bin/rails credentials:edit` to create a
    master key, and `kamal setup`.

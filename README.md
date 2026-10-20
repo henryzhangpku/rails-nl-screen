@@ -18,6 +18,7 @@ and the app:
 4. **streams each match into the results table live** (Turbo Streams), with the value of every condition and a one-line "why it matched".
 5. **ranks the survivors**: each passing condition scores how far past its threshold the stock is (0 to 1; for a MACD cross, how recent it was), and matches are sorted by the average.
 6. **keeps a searchable history** at `/screens`: search as you type, filter, sort and paginate inside a Turbo Frame, delete with a toast.
+7. **treats the Claude prompt as data**: it lives in [PromptEngine](https://rubygems.org/gems/prompt_engine) (a mountable engine) at `/prompts`, where each edit becomes a numbered version and every screen records which version parsed it. The editor sits behind Rails 8's generated sign-in.
 
 No React, no Node build, no paid data. Optional: if `ANTHROPIC_API_KEY` is set, Claude (`claude-sonnet-5-5`) *proposes* the typed screen as JSON, and the same whitelist validations decide what is kept. The model proposes; code decides. Without the key, the deterministic rule-based parser does everything.
 
@@ -42,6 +43,9 @@ bin/setup          # bundle install, create the 4 SQLite databases, start the se
 bin/dev            # later: start the server (Puma + Solid Queue worker in one process)
 open http://localhost:3000
 ```
+
+The prompt editor is at http://localhost:3000/prompts; `bin/setup` seeds a development admin,
+`admin@example.com` / `nl-screen-admin` (set `ADMIN_EMAIL` / `ADMIN_PASSWORD` before seeding anywhere else).
 
 Useful switches:
 
@@ -82,7 +86,7 @@ Anything it can't map is shown back as "Didn't understand ...", never silently g
 ## Architecture in 10 lines
 
 1. `ScreensController#create` calls `Screen.from_query(text)` and redirects to the screen's page.
-2. `ScreenParser` (regex rules) or `ScreenParser::Claude` (structured JSON output) proposes condition attributes.
+2. `ScreenParser` (regex rules) or `ScreenParser::Claude` (structured JSON output, prompt rendered by PromptEngine) proposes condition attributes.
 3. `Condition::SPECS` is the whitelist; Condition validations drop anything that doesn't fit.
 4. The show page renders "Here's what I understood" and subscribes with `turbo_stream_from @screen`.
 5. `RunScreenJob` (Solid Queue) calls `Screen#run`, which walks `Universe.symbols`.
@@ -121,6 +125,9 @@ look in this repo.
 | Test::Unit, fixtures only | Minitest is still the default; this app uses **RSpec** (rspec-rails): model, request and **system specs** in a real browser | `spec/models/*`, `spec/requests/*`, `spec/system/screens_spec.rb` |
 | — | Ruby 3 niceties used here: `Data.define` value objects, endless methods (`def spec = SPECS[indicator]`) | `Condition::Evaluation`, `PriceSeries::Point`, `ScreenParser::Result` |
 | — | Built-in health check, Brakeman, RuboCop (omakase style), GitHub Actions CI | `/up` route, `.github/workflows/ci.yml` |
+| `acts_as_authenticated` / restful_authentication plugins | **`bin/rails generate authentication`**: sessions, `has_secure_password`, a `Current` model and built-in `rate_limit`, generated as your own code | `app/controllers/concerns/authentication.rb`, `config/routes.rb` (route constraint guarding `/prompts`) |
+| Engines (Rails 2.3, still rough) | **Mountable engines** with isolated namespaces, migrations and assets | `mount PromptEngine::Engine => "/prompts"` |
+| `annotate_models` plugin | **annotaterb** (same idea, maintained): schema comments above each model, refreshed after `db:migrate` | `app/models/*.rb`, `.annotaterb.yml` |
 | `rake` tasks, views only inside requests | Rake still, plus **rendering views anywhere** with `ApplicationController.render` | `lib/tasks/demo.rake` builds the Pages demo from the real partials |
 
 Things that did **not** change much: MVC, ActiveRecord, migrations, `resources` routing, ERB, and "convention over
@@ -129,5 +136,5 @@ configuration". Read in this order: `config/routes.rb`, `app/controllers/screens
 
 ## Not done (on purpose)
 
-- No auth, no deploy secrets. Before using Kamal you'd run `bin/rails credentials:edit` and fill in `config/deploy.yml`.
+- Sign-in only guards the prompt editor; screens are public. No deploy secrets: before using Kamal you'd run `bin/rails credentials:edit` and fill in `config/deploy.yml`.
 - Prices are end-of-day, split-adjusted but not dividend-adjusted, from an unofficial API; this is a learning toy, not a trading tool.
