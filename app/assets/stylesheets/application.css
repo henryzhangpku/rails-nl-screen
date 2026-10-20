@@ -47,10 +47,10 @@ code, pre { font-family: var(--font-mono); }
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   border-bottom: 1px solid var(--rule); background: var(--surface);
 }
-.brand { font: 800 1.05rem/1 var(--font-display); letter-spacing: -0.01em; color: var(--ink); text-decoration: none; }
-.brand span { color: var(--accent); }
-.topbar .repo { margin-left: auto; font: 600 0.82rem/1 var(--font-body); color: var(--accent); text-decoration: none; padding: 0.45rem 0.7rem; border: 1px solid var(--rule); border-radius: 6px; }
-.topbar .repo:hover { border-color: var(--accent); }
+.brand { display: inline-flex; align-items: center; gap: 0.5rem; font: 800 1.05rem/1 var(--font-display); letter-spacing: -0.01em; color: var(--ink); text-decoration: none; }
+.brand .slash { font-style: normal; color: var(--accent); }
+.topbar .repo { margin-left: auto; display: inline-flex; align-items: center; gap: 0.45rem; color: var(--ink); font: 600 0.82rem/1 var(--font-body); color: var(--accent); text-decoration: none; padding: 0.45rem 0.7rem; border: 1px solid var(--rule); border-radius: 6px; }
+.topbar .repo:hover { border-color: var(--accent); color: var(--accent); }
 .topbar .meta { font: 500 0.78rem/1.3 var(--font-mono); color: var(--ink-2); letter-spacing: 0.02em; }
 main {
   max-width: 68rem; margin: 0 auto;

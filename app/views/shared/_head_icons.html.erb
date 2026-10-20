@@ -1,0 +1,2 @@
+<%# Favicon inlined as a data URI so it also works on the static demo (no asset server there). %>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<%= ERB::Util.url_encode(Rails.root.join("public/icon.svg").read.strip) %>">

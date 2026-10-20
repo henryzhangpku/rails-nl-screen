@@ -8,7 +8,7 @@
 
     <%= yield :head %>
 
-    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <%= render "shared/head_icons" %>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Public+Sans:wght@400;600&display=swap">
@@ -18,9 +18,9 @@
 
   <body>
     <header class="topbar">
-      <%= link_to root_path, class: "brand" do %>NL<span>/</span>Screen<% end %>
+      <%= link_to root_path, class: "brand" do %><img src="/icon.svg" alt="" width="22" height="22"><span>NL<i class="slash">/</i>Screen</span><% end %>
       <span class="meta">plain-English stock screens · Rails 8 + Hotwire</span>
-      <a class="repo" href="https://github.com/henryzhangpku/rails-nl-screen">Code on GitHub ↗</a>
+      <%= render "shared/repo_link" %>
     </header>
     <main>
       <%= yield %>

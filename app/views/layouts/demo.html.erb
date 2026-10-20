@@ -3,6 +3,19 @@
   <head>
     <title><%= content_for(:title) || "NL Screen" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <%= render "shared/head_icons" %>
+    <% description = "Plain-English stock screens: typed into a box, parsed into whitelisted conditions, run over 100 large US stocks on real daily prices, survivors ranked. Built with Rails 8 + Hotwire." %>
+    <meta name="description" content="<%= description %>">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="NL Screen">
+    <meta property="og:title" content="<%= content_for(:og_title) || "NL Screen: type a stock screen the way you'd say it" %>">
+    <meta property="og:description" content="<%= description %>">
+    <meta property="og:url" content="<%= @site_url %><%= @page_path %>">
+    <meta property="og:image" content="<%= @site_url %>og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="627">
+    <meta property="og:image:alt" content="NL Screen: a plain-English stock screen and its ranked results">
+    <meta name="twitter:card" content="summary_large_image">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Public+Sans:wght@400;600&display=swap">
@@ -12,9 +25,9 @@
 
   <body>
     <header class="topbar">
-      <a class="brand" href="index.html">NL<span>/</span>Screen</a>
+      <a class="brand" href="index.html"><img src="data:image/svg+xml,<%= ERB::Util.url_encode(Rails.root.join("public/icon.svg").read.strip) %>" alt="" width="22" height="22"><span>NL<i class="slash">/</i>Screen</span></a>
       <span class="meta">snapshot · <%= @built_on.to_fs(:long) %> close · 100 large US stocks</span>
-      <a class="repo" href="https://github.com/henryzhangpku/rails-nl-screen">Code on GitHub ↗</a>
+      <%= render "shared/repo_link" %>
     </header>
     <main>
       <div class="banner">

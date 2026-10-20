@@ -1,0 +1,43 @@
+<%# 1200x627 link-preview card (LinkedIn/Slack/X). Screenshotted by demo:export; not part of the site. %>
+<% featured = @screens.max_by { |s| s.matches.size } %>
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Public+Sans:wght@400;600&display=swap">
+    <style>
+      <%= Rails.root.join("app/assets/stylesheets/application.css").read.html_safe %>
+      html, body { width: 1200px; height: 627px; margin: 0; overflow: hidden; }
+      body { background: var(--paper); display: grid; grid-template-columns: 1.05fr 1fr; gap: 44px; padding: 56px 60px; }
+      .left { display: grid; align-content: space-between; }
+      .mark { display: flex; align-items: center; gap: 12px; font: 800 26px/1 var(--font-display); }
+      .mark .slash { font-style: normal; color: var(--accent); }
+      .og-h1 { font: 800 54px/1.04 var(--font-display); letter-spacing: -0.02em; margin: 0; }
+      .og-prompt { font: 500 19px/1.45 var(--font-mono); padding: 16px 18px; border: 1px solid var(--rule); border-left: 4px solid var(--accent); border-radius: 8px; background: var(--surface); }
+      .og-prompt::before { content: "› "; color: var(--accent); }
+      .stack-tags { font: 600 15px/1 var(--font-mono); color: var(--ink-2); letter-spacing: 0.04em; }
+      .panel { align-self: center; border: 1px solid var(--rule); border-radius: 14px; background: var(--surface); overflow: hidden; box-shadow: 0 18px 40px -24px rgba(16, 24, 40, .35); }
+      .panel header { display: flex; justify-content: space-between; align-items: baseline; padding: 18px 22px; border-bottom: 1px solid var(--rule); }
+      .panel header b { font: 600 34px/1 var(--font-mono); color: var(--up); }
+      .row { display: grid; grid-template-columns: 34px 92px 1fr 52px; align-items: center; gap: 12px; padding: 13px 22px; border-bottom: 1px solid var(--rule); font: 500 17px/1 var(--font-mono); }
+      .row:last-child { border-bottom: 0; }
+      .row .t { font: 700 19px/1 var(--font-display); }
+      .row .b { height: 6px; border-radius: 3px; background: var(--rule); overflow: hidden; }
+      .row .b i { display: block; height: 100%; background: var(--up); }
+    </style>
+  </head>
+  <body>
+    <div class="left">
+      <div class="mark"><img src="data:image/svg+xml,<%= ERB::Util.url_encode(Rails.root.join("public/icon.svg").read.strip) %>" width="40" height="40" alt=""><span>NL<i class="slash">/</i>Screen</span></div>
+      <h1 class="og-h1">Type a stock screen the way you'd say it.</h1>
+      <div class="og-prompt"><%= featured.query %></div>
+      <div class="stack-tags">RAILS 8 · HOTWIRE · SOLID QUEUE · REAL DAILY PRICES</div>
+    </div>
+    <div class="panel">
+      <header><span class="eyebrow">Ranked survivors · <%= @built_on.to_fs(:long) %></span><span><b><%= featured.matches.size %></b> <span class="muted">/ <%= featured.universe_size %></span></span></header>
+      <% featured.matches.first(6).each_with_index do |match, i| %>
+        <div class="row"><span class="muted"><%= i + 1 %></span><span class="t"><%= match.symbol %></span><span class="b"><i style="width: <%= (match.score * 100).round %>%"></i></span><span><%= number_with_precision(match.score, precision: 2) %></span></div>
+      <% end %>
+    </div>
+  </body>
+</html>

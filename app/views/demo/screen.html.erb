@@ -1,4 +1,5 @@
 <% content_for :title, @screen.query %>
+<% content_for :og_title, "NL Screen: “#{@screen.query}”" %>
 
 <%# The same partials the live show page uses, just without the Turbo stream subscription. %>
 <%= render "screens/understood", screen: @screen %>
