@@ -52,6 +52,10 @@ module ScreenParser::LLM
   # record doesn't exist or isn't active, the prompt above is used as written.
   PROMPT_NAME = "screen-parser"
 
+  # The wire protocol, where a provider's default can't enforce SCHEMA. DeepSeek's chat
+  # completions only promise *a* JSON object; its Responses API takes a json_schema.
+  PROTOCOLS = { "deepseek" => "responses" }.freeze
+
   # What gets sent: instructions, the user message, the model and its provider,
   # and a label naming them.
   Request = Data.define(:instructions, :message, :model, :provider, :protocol, :label)
@@ -72,15 +76,17 @@ module ScreenParser::LLM
 
     metadata = version.metadata.to_h
     model = ENV["SCREEN_PARSER_MODEL"].presence || version.model.presence || MODEL
+    provider = provider_for(model, metadata["provider"])
     message = PromptEngine::VariableDetector.new(version.content).render(query: text)
-    Request.new(version.system_message, message, model, provider_for(model, metadata["provider"]), metadata["protocol"],
+    Request.new(version.system_message, message, model, provider, protocol_for(provider, metadata["protocol"]),
                 "#{model}, prompt #{PROMPT_NAME} v#{version.version_number}")
   end
 
   def self.fallback_request(text)
     model = ENV["SCREEN_PARSER_MODEL"].presence || MODEL
+    provider = provider_for(model)
     fingerprint = Digest::SHA256.hexdigest(SYSTEM_PROMPT + SCHEMA.to_json).first(8)
-    Request.new(SYSTEM_PROMPT, text, model, provider_for(model), nil, "#{model}, prompt #{fingerprint}")
+    Request.new(SYSTEM_PROMPT, text, model, provider, protocol_for(provider), "#{model}, prompt #{fingerprint}")
   end
 
   # From RubyLLM's model registry; for a model it doesn't list, name the provider in
@@ -89,6 +95,12 @@ module ScreenParser::LLM
     (ENV["SCREEN_PARSER_PROVIDER"].presence || named.presence || RubyLLM.models.find(model).provider).to_s
   rescue RubyLLM::ModelNotFoundError
     nil
+  end
+
+  # SCREEN_PARSER_PROTOCOL or the prompt's metadata ({"protocol": "chat_completions"})
+  # override the default; nil lets RubyLLM pick.
+  def self.protocol_for(provider, named = nil)
+    ENV["SCREEN_PARSER_PROTOCOL"].presence || named.presence || PROTOCOLS[provider]
   end
 
   def self.label = request_for("").label
@@ -101,8 +113,8 @@ module ScreenParser::LLM
     response = chat.with_instructions(request.instructions).with_schema(SCHEMA).ask(request.message)
     raise "#{request.model} stopped early (#{response.finish_reason})" unless response.finish_reason.in?([ :stop, nil ])
 
-    # Providers without strict JSON schemas (e.g. DeepSeek's chat API) only promise *a*
-    # JSON object, so read it defensively; the Condition validations do the rest.
+    # Not every provider/protocol enforces SCHEMA (DeepSeek's chat completions only promise
+    # *a* JSON object), so read it defensively; the Condition validations do the rest.
     json = response.parsed.to_h
     ScreenParser::Result.new(Array(json["conditions"]).grep(Hash).map(&:symbolize_keys), Array(json["unrecognized"]).map(&:to_s))
   end

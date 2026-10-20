@@ -112,7 +112,7 @@ RSpec.describe ScreenParser::LLM do
       with_env("SCREEN_PARSER_MODEL" => "deepseek-v4-flash") { described_class.parse("RSI under 30") }
 
       expect(RubyLLM).to have_received(:chat)
-        .with(model: "deepseek-v4-flash", provider: :deepseek, protocol: nil, assume_model_exists: true)
+        .with(model: "deepseek-v4-flash", provider: :deepseek, protocol: :responses, assume_model_exists: true)
     end
   end
 
