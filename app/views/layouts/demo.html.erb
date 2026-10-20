@@ -1,23 +1,25 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title><%= content_for(:title) || "NL Screen demo" %></title>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title><%= content_for(:title) || "NL Screen" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Public+Sans:wght@400;600&display=swap">
     <%# A static file has no asset server, so the stylesheet is inlined. %>
     <style><%= Rails.root.join("app/assets/stylesheets/application.css").read.html_safe %></style>
   </head>
 
   <body>
-    <header>
-      <a class="brand" href="index.html">NL Screen</a>
-      <span class="tagline">static demo, snapshot of <%= @built_on.to_fs(:long) %></span>
+    <header class="topbar">
+      <a class="brand" href="index.html">NL<span>/</span>Screen</a>
+      <span class="meta">snapshot · <%= @built_on.to_fs(:long) %> close · 100 large US stocks</span>
     </header>
     <main>
-      <p class="notes">
-        A frozen snapshot of what the Rails app shows for a few example screens, using
-        <%= @data_source %>. The real app (Turbo, Solid Queue, live streaming results)
-        needs a Ruby server; run it locally with <code>bin/dev</code>.
-      </p>
+      <div class="banner">
+        <span class="badge">Static demo</span>
+        <span>Output of the Rails app for five example screens, on <%= @data_source %>. The live app streams results as they're found; run it with <code>bin/dev</code>.</span>
+      </div>
       <%= yield %>
     </main>
   </body>

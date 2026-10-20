@@ -13,7 +13,7 @@ class ScreensControllerTest < ActionDispatch::IntegrationTest
     end
     follow_redirect!
     assert_select "h1", "Here's what I understood"
-    assert_equal [ "RSI(14) below 30", "Price above SMA(200)" ], css_select(".understood li code").map(&:text)
+    assert_equal [ "RSI(14) below 30", "Price above SMA(200)" ], css_select(".chip").map(&:text)
   end
 
   test "create with nonsense re-renders the form" do

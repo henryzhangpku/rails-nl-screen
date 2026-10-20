@@ -1,30 +1,37 @@
-<% content_for :title, "New screen" %>
+<% content_for :title, "NL Screen" %>
 
-<h1>What are you looking for?</h1>
+<section class="stack">
+  <span class="eyebrow">Plain English in, ranked stocks out</span>
+  <h1>Type a stock screen the way you'd say it.</h1>
+  <p class="lede">I'll show you exactly how I read it, then scan 100 large US stocks and stream matches in as they're found.</p>
+</section>
 
-<%= form_with model: @screen, data: { controller: "examples" } do |form| %>
+<%= form_with model: @screen, class: "compose", data: { controller: "examples" } do |form| %>
   <% if @screen.errors.any? %>
     <div class="error"><%= @screen.errors.full_messages.to_sentence %></div>
   <% end %>
 
   <%= form.text_area :query, rows: 3, autofocus: true, data: { examples_target: "input" },
         placeholder: "RSI(14) under 30 on the daily, MACD crossing up, volume above its 20-day average, price above the 200-day moving average" %>
+  <%= form.submit "Run screen", class: "button" %>
 
-  <p class="examples">
-    Try:
-    <% Screen::EXAMPLES.each do |example| %>
-      <button type="button" data-action="examples#fill" data-examples-query-param="<%= example %>"><%= example %></button>
-    <% end %>
-  </p>
-
-  <%= form.submit "Run screen" %>
+  <div class="stack">
+    <span class="eyebrow">Try one</span>
+    <div class="examples">
+      <% Screen::EXAMPLES.each do |example| %>
+        <button type="button" data-action="examples#fill" data-examples-query-param="<%= example %>"><%= example %></button>
+      <% end %>
+    </div>
+  </div>
 <% end %>
 
 <% if @recent.any? %>
-  <h2>Recent screens</h2>
-  <ul class="recent">
-    <% @recent.each do |screen| %>
-      <li><%= link_to screen.query, screen %> <span class="muted"><%= screen.matches.size %> matches</span></li>
-    <% end %>
-  </ul>
+  <section class="stack">
+    <h2>Recent screens</h2>
+    <ul class="recent">
+      <% @recent.each do |screen| %>
+        <li><%= link_to screen.query, screen %> <span class="muted"><%= pluralize(screen.matches.size, "match") %></span></li>
+      <% end %>
+    </ul>
+  </section>
 <% end %>

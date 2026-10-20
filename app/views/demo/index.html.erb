@@ -1,11 +1,27 @@
-<% content_for :title, "NL Screen demo" %>
+<% content_for :title, "NL Screen" %>
 
-<h1>Plain-English stock screens</h1>
-<ul class="recent">
+<section class="stack">
+  <span class="eyebrow">Plain English in, ranked stocks out</span>
+  <h1>Type a stock screen the way you'd say it.</h1>
+  <p class="lede">Each query below was parsed into typed, whitelisted conditions, run over 100 large US stocks, and the survivors ranked by how decisively they pass.</p>
+</section>
+
+<section class="cards">
   <% @screens.each_with_index do |screen, i| %>
-    <li>
-      <a href="screen-<%= i + 1 %>.html"><%= screen.query %></a>
-      <span class="muted"><%= pluralize(screen.matches.size, "match") %> out of <%= screen.universe_size %></span>
-    </li>
+    <a class="card" href="screen-<%= i + 1 %>.html">
+      <span class="q"><%= screen.query %></span>
+      <ul class="chips">
+        <% screen.conditions.each do |condition| %>
+          <li class="chip"><%= condition.label.delete_suffix(" (weekly)") %><% if condition.timeframe == "weekly" %><span class="tf">wk</span><% end %></li>
+        <% end %>
+      </ul>
+      <span class="count <%= "zero" if screen.matches.empty? %>"><b><%= screen.matches.size %></b><span class="muted">of <%= screen.universe_size %> matched</span></span>
+      <% if screen.matches.any? %>
+        <span class="tickers">
+          <% screen.matches.first(6).each do |match| %><span class="tick"><%= match.symbol %></span><% end %>
+          <% if screen.matches.size > 6 %><span class="muted">+<%= screen.matches.size - 6 %></span><% end %>
+        </span>
+      <% end %>
+    </a>
   <% end %>
-</ul>
+</section>

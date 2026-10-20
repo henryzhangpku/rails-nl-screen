@@ -1,22 +1,21 @@
-<section class="understood">
+<section class="stack">
   <h1>Here's what I understood</h1>
-  <p class="muted">“<%= screen.query %>” — parsed by <%= screen.source == "claude" ? "Claude, then validated by code" : "the rule-based parser" %></p>
-  <ol>
+  <div class="prompt"><%= screen.query %></div>
+  <ul class="chips">
     <% screen.conditions.each do |condition| %>
-      <li><code><%= condition.label %></code></li>
+      <li class="chip"><%= condition.label.delete_suffix(" (weekly)") %><% if condition.timeframe == "weekly" %><span class="tf">weekly</span><% end %></li>
     <% end %>
-  </ol>
+  </ul>
+  <% notes = screen.notes.grep_v(/\ANo data/) %>
+  <% if notes.any? %>
+    <ul class="notes">
+      <% notes.each do |note| %><li><%= note %></li><% end %>
+    </ul>
+  <% end %>
   <% if screen.proposal.present? %>
-    <details class="notes">
-      <summary>Audit: raw proposal from <%= screen.parser %></summary>
+    <details class="audit">
+      <summary>Parsed by <%= screen.parser %>; raw proposal before validation</summary>
       <pre><%= JSON.pretty_generate(screen.proposal) %></pre>
     </details>
-  <% end %>
-  <% if screen.notes.any? %>
-    <ul class="notes">
-      <% screen.notes.each do |note| %>
-        <li><%= note %></li>
-      <% end %>
-    </ul>
   <% end %>
 </section>

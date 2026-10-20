@@ -18,10 +18,10 @@ class ScreensTest < ApplicationSystemTestCase
     click_on "Run screen"
 
     assert_text "Here's what I understood", wait: 60 # the inline job scans all 100 symbols first
-    assert_selector ".understood code", text: "Drawdown from 52-week high below 5%"
-    assert_selector ".understood code", text: "Price above EMA(50)"
-    assert_selector ".understood code", text: "Volume above 1.5x its 20-bar average"
-    assert_text(/Done: \d+ match(es)? out of 100 symbols/)
+    assert_selector ".chip", text: "Drawdown from 52-week high below 5%"
+    assert_selector ".chip", text: "Price above EMA(50)"
+    assert_selector ".chip", text: "Volume above 1.5x its 20-bar average"
+    assert_selector "#progress", text: "Done"
 
     Screen.last.matches.each do |match|
       assert_selector "#matches tr", text: match.symbol

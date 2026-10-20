@@ -1,14 +1,28 @@
-<div id="progress" class="progress <%= screen.status %>">
-  <% case screen.status %>
-  <% when "pending" %>
-    Queued…
-  <% when "running" %>
-    Scanning <%= screen.scanned_count %> / <%= screen.universe_size %> symbols — <%= pluralize(screen.matches.size, "match") %> so far
-    <progress value="<%= screen.scanned_count %>" max="<%= screen.universe_size %>"></progress>
-  <% when "done" %>
-    Done: <%= pluralize(screen.matches.size, "match") %> out of <%= screen.universe_size %> symbols.
-    <% screen.notes.grep(/\ANo data/).each do |note| %><span class="muted"><%= note %></span><% end %>
-  <% when "failed" %>
-    Failed: <%= screen.error_message %>
+<div id="progress" class="stats">
+  <div class="stat">
+    <span class="eyebrow">Matches</span>
+    <span class="value <%= "up" if screen.matches.any? %>"><%= screen.matches.size %></span>
+  </div>
+  <div class="stat">
+    <span class="eyebrow">Scanned</span>
+    <span class="value"><%= screen.done? ? screen.universe_size : screen.scanned_count %><span class="muted"> / <%= screen.universe_size %></span></span>
+  </div>
+  <div class="stat">
+    <span class="eyebrow">Status</span>
+    <% case screen.status %>
+    <% when "pending" %>
+      <span class="value muted">Queued</span>
+    <% when "running" %>
+      <span class="value">Scanning</span>
+      <progress value="<%= screen.scanned_count %>" max="<%= screen.universe_size %>"></progress>
+    <% when "done" %>
+      <span class="value up">Done</span>
+    <% when "failed" %>
+      <span class="value error">Failed</span>
+      <span class="muted"><%= screen.error_message %></span>
+    <% end %>
+  </div>
+  <% screen.notes.grep(/\ANo data/).each do |note| %>
+    <div class="stat"><span class="eyebrow">Data gaps</span><span class="muted"><%= note.sub("No data for ", "") %></span></div>
   <% end %>
 </div>
