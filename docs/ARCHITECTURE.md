@@ -30,7 +30,7 @@ Suggested reading order for the code: `config/routes.rb` → `app/controllers/sc
 | Web server | Puma (+ Thruster in production) | `config/puma.rb`, `Dockerfile` |
 | Routing / HTTP | `resources :screens`, one controller | `config/routes.rb`, `app/controllers/screens_controller.rb` |
 | Sign-in | Rails 8 **authentication generator** (`has_secure_password`, a `Session` model, signed cookie) | `app/controllers/concerns/authentication.rb`, `app/models/session.rb` |
-| Engines | **PromptEngine** mounted at `/prompts`: the Claude prompt as versioned data, behind sign-in | `config/routes.rb`, `db/seeds.rb` |
+| Engines | **PromptEngine** mounted at `/prompts`: the LLM prompt as versioned data, behind sign-in | `config/routes.rb`, `db/seeds.rb` |
 | Domain logic | Active Record models and plain Ruby objects, autoloaded by Zeitwerk | `app/models/*` |
 | Persistence | SQLite via Active Record, 4 databases | `config/database.yml`, `db/migrate/*` |
 | Background work | Active Job on **Solid Queue**, run inside Puma | `app/jobs/run_screen_job.rb`, `config/queue.yml` |
@@ -39,7 +39,7 @@ Suggested reading order for the code: `config/routes.rb` → `app/controllers/sc
 | Front end | Hotwire: Turbo Drive, Turbo Streams, one Stimulus controller | `app/views/**`, `app/javascript/controllers/examples_controller.js` |
 | JavaScript delivery | **Importmaps** (no bundler, no `node_modules`) | `config/importmap.rb` |
 | CSS / assets | **Propshaft** serving plain CSS, one file per component, BEM names (`ns-` prefix) | `app/assets/stylesheets/*.css` |
-| External APIs | Net::HTTP (Yahoo chart API), **RubyLLM** (optional, for Claude) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/claude.rb` |
+| External APIs | Net::HTTP (Yahoo chart API), **RubyLLM** (optional; any provider: Anthropic, DeepSeek, OpenAI, Gemini…) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/llm.rb` |
 | Tests | **RSpec** (rspec-rails), FactoryBot, WebMock; system specs with **Cuprite** (headless Chrome over CDP) | `spec/**` |
 | CI | GitHub Actions: Brakeman, bundler-audit, importmap audit, RuboCop, tests | `.github/workflows/ci.yml` |
 | Dev tooling | **annotaterb** (schema comments at the top of each model), **rails_live_reload** (browser refreshes on save) | `.annotaterb.yml`, `lib/tasks/annotate_rb.rake` |
@@ -61,7 +61,7 @@ flowchart TB
     C["ScreensController"]
     M["Models<br/>Screen · Condition · Match · Bar"]
     P["ScreenParser<br/>(rules)"]
-    CL["ScreenParser::Claude<br/>(optional)"]
+    CL["ScreenParser::LLM<br/>(optional)"]
     AC["Action Cable"]
     subgraph SQ["Solid Queue supervisor (Puma plugin)"]
       J["RunScreenJob"]
@@ -76,11 +76,11 @@ flowchart TB
   end
 
   Y["Yahoo chart API<br/>daily OHLCV"]
-  A["Claude API"]
+  A["LLM API<br/>(Anthropic, DeepSeek, …)"]
 
   UI -- "POST /screens" --> C
   C --> P
-  C -. "if ANTHROPIC_API_KEY" .-> CL
+  C -. "if the model's provider has a key" .-> CL
   CL -. "JSON proposal" .-> A
   C --> M --> DB1
   C -- "perform_later" --> DB2
@@ -219,7 +219,7 @@ by file name (`app/models/market_data/yahoo.rb` ⇒ `MarketData::Yahoo`).
 | `Indicators` | Module of pure functions | SMA, EMA, Wilder RSI, MACD, cross detection, over plain arrays. |
 | `PriceSeries` | Plain object | Ordered OHLCV points; resamples daily to weekly. |
 | `MarketData::Yahoo` / `::Synthetic` | Modules | Where prices come from (real, or deterministic fake for offline use). |
-| `ScreenParser` / `ScreenParser::Claude` | Modules | Turn text into *proposed* condition attributes. |
+| `ScreenParser` / `ScreenParser::LLM` | Modules | Turn text into *proposed* condition attributes. |
 | `Universe` | Module | Reads the 100 tickers from `db/universe.txt`. |
 
 Modern Ruby used along the way: `Data.define` for small immutable value objects
@@ -237,7 +237,7 @@ validates :timeframe, inclusion: { in: TIMEFRAMES }
 validate  :fits_spec  # operator allowed? period in 2..250? value in range?
 ```
 
-The same `SPECS` hash generates the JSON schema sent to Claude, so the model is constrained to the shape the
+The same `SPECS` hash generates the JSON schema sent to the model, so the model is constrained to the shape the
 code accepts, and anything that still doesn't fit is dropped with a visible note.
 
 ### Evaluation and ranking
@@ -257,10 +257,10 @@ code accepts, and anything that still doesn't fit is dropped with a visible note
 
 ```mermaid
 flowchart TD
-  T["Plain-English query"] --> E{"ANTHROPIC_API_KEY set?"}
+  T["Plain-English query"] --> E{"Key set for the<br/>model's provider?"}
   E -- no --> R["ScreenParser (regex rules)<br/>deterministic, offline"]
   E -- yes --> P["Prompt from PromptEngine<br/>(active 'screen-parser' record,<br/>else the prompt in code)"]
-  P --> L["ScreenParser::Claude<br/>structured JSON output<br/>schema built from Condition::SPECS"]
+  P --> L["ScreenParser::LLM<br/>any RubyLLM provider<br/>schema built from Condition::SPECS"]
   L -- "error / refusal" --> R
   L --> PR["Proposal: conditions + unrecognized"]
   R --> PR
@@ -276,9 +276,18 @@ flowchart TD
 
 - The rule-based parser splits the text into clauses (keeping "between $20 and $200" intact), then each
   clause is matched by one rule (RSI, MACD, volume, 52-week drawdown, moving average, price).
-- The optional Claude path uses **RubyLLM** (`RubyLLM.chat(...).with_instructions(...).with_schema(SCHEMA).ask(text)`),
-  a provider-agnostic client; `with_schema` turns on structured output, so the reply is guaranteed to parse,
-  and swapping providers is a one-line change. The parser is injected (`Screen.from_query(query, parser:)`), which is
+- The optional LLM path uses **RubyLLM** (`RubyLLM.chat(...).with_instructions(...).with_schema(SCHEMA).ask(text)`),
+  Ruby's LiteLLM: one client, many providers. The provider follows from the model name in RubyLLM's registry
+  (`claude-sonnet-5-5` → Anthropic, `deepseek-v4-flash` → DeepSeek, `gpt-5` → OpenAI); change the model in the
+  prompt editor, or set `SCREEN_PARSER_MODEL`, and screens use that provider if its key is set. For a model the
+  registry doesn't list, name the provider in the prompt's metadata (`{"provider": "deepseek"}`) or
+  `SCREEN_PARSER_PROVIDER`.
+- `with_schema` turns on structured output. Anthropic and OpenAI enforce the schema; DeepSeek's chat API only
+  promises *a* JSON object (RubyLLM falls back to JSON mode and logs a warning), so the prompt spells out the shape,
+  the parser reads the reply defensively, and the `Condition` validations reject anything off-schema. Same
+  boundary, whatever the model. `spec/models/screen_parser/llm_deepseek_spec.rb` checks the DeepSeek request
+  and parsing through RubyLLM's real HTTP client against a stubbed endpoint.
+- The parser is injected (`Screen.from_query(query, parser:)`), which is how the tests swap in fakes. The parser is injected (`Screen.from_query(query, parser:)`), which is
   how the tests swap in fakes without a mocking library.
 - Every screen stores the raw proposal and a parser label (`rules v1`; `claude-sonnet-5-5, prompt screen-parser v3`
   when the prompt came from PromptEngine; or the model plus a fingerprint of the in-code prompt and schema), so any
@@ -286,12 +295,12 @@ flowchart TD
 
 ### Prompts as data: PromptEngine
 
-The instructions Claude gets are not just a constant in a Ruby file. They live in a database row managed by
+The instructions the model gets are not just a constant in a Ruby file. They live in a database row managed by
 **PromptEngine**, a mountable Rails engine: an editor, a version history (every save of a versioned field
 creates an immutable `PromptVersion`), a playground and evaluations, all at `/prompts`.
 
 ```ruby
-# app/models/screen_parser/claude.rb
+# app/models/screen_parser/llm.rb
 version ||= PromptEngine::Prompt.active.find_by(name: "screen-parser")&.current_version
 message = PromptEngine::VariableDetector.new(version.content).render(query: text)   # "{{query}}" -> the query
 chat.with_instructions(version.system_message).with_schema(SCHEMA).ask(message)
@@ -300,7 +309,7 @@ chat.with_instructions(version.system_message).with_schema(SCHEMA).ask(message)
 It renders a specific `PromptVersion` rather than calling `PromptEngine.render(slug)` (which renders the
 current one), so an old version can be replayed for comparison.
 
-- The record is created by `db/seeds.rb` from `ScreenParser::Claude::SYSTEM_PROMPT`, with the user message
+- The record is created by `db/seeds.rb` from `ScreenParser::LLM::SYSTEM_PROMPT`, with the user message
   as a template (`{{query}}`). If the record is missing or archived, the in-code prompt is used, so tests and a
   fresh checkout behave the same.
 - What PromptEngine does **not** own: the JSON schema and the validations. You can rewrite the prompt in the
@@ -315,7 +324,8 @@ current one), so an old version can be replayed for comparison.
   with three fixes, each also a separate branch for upstream review. See "Running on a fork" below.
 - PromptEngine's settings page can store API keys, encrypted with `encrypts :anthropic_api_key` (Active Record
   encryption, Rails 7+). `config/initializers/active_record_encryption.rb` derives those keys from
-  `secret_key_base` unless real ones are in credentials. This app still reads the key from `ANTHROPIC_API_KEY`.
+  `secret_key_base` unless real ones are in credentials. This app still reads provider keys from env vars
+  (`ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, … in `config/initializers/ruby_llm.rb`).
 
 ### Evals: did the prompt edit make it better or worse?
 
@@ -326,6 +336,7 @@ Its admin lists the runs, compares two of them side by side, and charts pass rat
 ```sh
 ANTHROPIC_API_KEY=... bin/rails prompts:eval            # current version
 ANTHROPIC_API_KEY=... VERSION=1 bin/rails prompts:eval  # replay an older version
+DEEPSEEK_API_KEY=... SCREEN_PARSER_MODEL=deepseek-v4-flash bin/rails prompts:eval  # same cases, another provider
 ```
 
 - The cases live in git, in `db/evals/screen_parser.yml` (the five example queries plus four more), and
@@ -558,11 +569,11 @@ flowchart LR
   subgraph Models["Model specs: spec/models (fast, no network)"]
     I["Indicators<br/>known values, incl. Wilder's RSI table"]
     PA["ScreenParser<br/>every rule"]
-    CL["ScreenParser::Claude<br/>instance_double of RubyLLM::Chat"]
+    CL["ScreenParser::LLM<br/>instance_double of RubyLLM::Chat"]
     CO["Condition<br/>whitelist + evaluate + strength"]
     PS["PriceSeries<br/>weekly resample"]
     YH["MarketData::Yahoo<br/>parse fixture JSON"]
-    SC["Screen<br/>fake source + fake Claude"]
+    SC["Screen<br/>fake source + fake LLM"]
   end
   subgraph Requests["Request spec: spec/requests"]
     CT["POST /screens<br/>have_enqueued_job, renders understanding"]
@@ -789,7 +800,7 @@ them is the same as in this app: a typed, whitelisted contract, and every propos
 Each one touches a different part of the stack. All of them can be done with the existing tests as a guide.
 
 1. **Add an indicator end to end.** Bollinger Bands: a pure function in `Indicators` with a known-value test,
-   a `SPECS` entry, an `evaluate` branch, and a parser rule with a test. Notice the Claude schema updates by
+   a `SPECS` entry, an `evaluate` branch, and a parser rule with a test. Notice the LLM schema updates by
    itself because it is generated from `SPECS`.
 2. **Fix the retry gap.** Add a unique index on `matches (screen_id, symbol)` with a migration, make `run`
    idempotent, and write a test that runs a screen twice.
@@ -804,7 +815,7 @@ Each one touches a different part of the stack. All of them can be done with the
    after the US close.
 7. **Ship a prompt change safely.** Sign in, edit the screen-parser prompt at `/prompts`, run
    `bin/rails prompts:eval` for the new version and `VERSION=1` for the old one, and compare the two runs in the
-   eval set's page. Then add a case the rules parser gets wrong but Claude should get right (it must pass
-   for Claude only, so the rules-parser spec will need an exception list).
+   eval set's page. Then add a case the rules parser gets wrong but the LLM should get right (it must pass
+   for the LLM only, so the rules-parser spec will need an exception list).
 8. **Deploy it.** Point `config/deploy.yml` at a small VPS, run `bin/rails credentials:edit` to create a
    master key, and `kamal setup`.

@@ -18,9 +18,9 @@ and the app:
 4. **streams each match into the results table live** (Turbo Streams), with the value of every condition and a one-line "why it matched".
 5. **ranks the survivors**: each passing condition scores how far past its threshold the stock is (0 to 1; for a MACD cross, how recent it was), and matches are sorted by the average.
 6. **keeps a searchable history** at `/screens`: search as you type, filter, sort and paginate inside a Turbo Frame, delete with a toast.
-7. **treats the Claude prompt as data**: it lives in [PromptEngine](https://rubygems.org/gems/prompt_engine) (a mountable engine) at `/prompts`, where each edit becomes a numbered version and every screen records which version parsed it, and `bin/rails prompts:eval` scores a version against a set of example screens. The editor sits behind Rails 8's generated sign-in.
+7. **treats the LLM prompt as data**: it lives in [PromptEngine](https://rubygems.org/gems/prompt_engine) (a mountable engine) at `/prompts`, where each edit becomes a numbered version and every screen records which version parsed it, and `bin/rails prompts:eval` scores a version against a set of example screens. The editor sits behind Rails 8's generated sign-in.
 
-No React, no Node build, no paid data. Optional: if `ANTHROPIC_API_KEY` is set, Claude (`claude-sonnet-5-5`) *proposes* the typed screen as JSON, and the same whitelist validations decide what is kept. The model proposes; code decides. Without the key, the deterministic rule-based parser does everything.
+No React, no Node build, no paid data. Optional: with an API key, an LLM *proposes* the typed screen as JSON (Claude `claude-sonnet-5-5` by default; any provider [RubyLLM](https://rubyllm.com) supports, e.g. DeepSeek), and the same whitelist validations decide what is kept. The model proposes; code decides. Without a key, the deterministic rule-based parser does everything.
 
 ## Demo
 
@@ -52,6 +52,7 @@ Useful switches:
 ```sh
 MARKET_DATA=synthetic bin/dev          # offline: deterministic fake prices instead of Yahoo
 ANTHROPIC_API_KEY=sk-ant-... bin/dev   # let Claude propose the parse (still validated by code)
+DEEPSEEK_API_KEY=sk-... SCREEN_PARSER_MODEL=deepseek-v4-flash bin/dev   # or DeepSeek (or any RubyLLM provider)
 ```
 
 The first run of a screen makes ~100 requests to Yahoo's chart API (one per ticker); after that, bars come
@@ -86,7 +87,7 @@ Anything it can't map is shown back as "Didn't understand ...", never silently g
 ## Architecture in 10 lines
 
 1. `ScreensController#create` calls `Screen.from_query(text)` and redirects to the screen's page.
-2. `ScreenParser` (regex rules) or `ScreenParser::Claude` (structured JSON output, prompt rendered by PromptEngine) proposes condition attributes.
+2. `ScreenParser` (regex rules) or `ScreenParser::LLM` (JSON from any RubyLLM provider, prompt from PromptEngine) proposes condition attributes.
 3. `Condition::SPECS` is the whitelist; Condition validations drop anything that doesn't fit.
 4. The show page renders "Here's what I understood" and subscribes with `turbo_stream_from @screen`.
 5. `RunScreenJob` (Solid Queue) calls `Screen#run`, which walks `Universe.symbols`.
@@ -110,7 +111,7 @@ look in this repo.
 | `javascripts/*.js` + inline JS | **Stimulus** controllers: small classes wired up with `data-` attributes | `app/javascript/controllers/examples_controller.js` (`data-action="examples#fill"`) |
 | Sprockets (from 3.1), then Webpacker | **Importmaps** (no bundler, no Node) + **Propshaft** (just serves and fingerprints files) | `config/importmap.rb`, `app/javascript/application.js`, `app/assets/stylesheets/*.css` (one file per component) |
 | `vendor/plugins`, `config.gem` | **Bundler** + `Gemfile.lock` | `Gemfile` (`ruby_llm`, `rspec-rails` added with `bundle add`) |
-| `require_dependency`, const_missing magic | **Zeitwerk** autoloading: file path = constant name | `app/models/market_data/yahoo.rb` is `MarketData::Yahoo`; `app/models/screen_parser/claude.rb` is `ScreenParser::Claude` |
+| `require_dependency`, const_missing magic | **Zeitwerk** autoloading: file path = constant name | `app/models/market_data/yahoo.rb` is `MarketData::Yahoo`; `app/models/screen_parser/llm.rb` is `ScreenParser::LLM` (one Zeitwerk inflection rule, in `config/initializers/inflections.rb`) |
 | BackgrounDRb, `script/runner` from cron | **Active Job** + **Solid Queue** (jobs in a database table, no Redis) | `app/jobs/run_screen_job.rb`, `config/queue.yml`, `config/puma.rb` (`plugin :solid_queue`) |
 | memcached | **Solid Cache** (cache in a SQLite/DB table) | `config/cache.yml`, `Rails.cache.fetch` in `app/models/bar.rb` |
 | No WebSockets | **Action Cable** + **Solid Cable** (pub/sub through a DB table) | `config/cable.yml` |
