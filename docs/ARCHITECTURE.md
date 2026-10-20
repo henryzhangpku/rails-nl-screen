@@ -485,7 +485,152 @@ The design choice that scales without change is the boundary in section 6: whate
 
 ---
 
-## 15. Exercises (to make it stick)
+## 15. Rails 8 vs. a modern Python + TypeScript stack
+
+My day-to-day stack is Python-first (research, agents, data pipelines; [equity-scout](https://github.com/henryzhangpku/equity-scout)
+is this same idea in Python). The closest "modern" equivalent of this app would be FastAPI + Pydantic +
+SQLAlchemy/Alembic + Postgres + Celery/RQ on Redis, with a React/Next.js front end. This section maps one onto
+the other, concept by concept.
+
+### Two architectures side by side
+
+```mermaid
+flowchart LR
+  subgraph R["Rails 8 (this app): one process, one language"]
+    direction TB
+    RB["Browser<br/>HTML + Turbo + Stimulus"] -->|form POST / HTML| RC["Controller + ERB views"]
+    RC --> RM["Active Record models<br/>(validations = whitelist)"]
+    RM --> RS[("SQLite x4<br/>app · queue · cache · cable")]
+    RJ["Active Job on Solid Queue<br/>(inside Puma)"] --> RM
+    RM -->|"Turbo Stream HTML<br/>over Solid Cable"| RB
+  end
+  subgraph P["Typical Python + TS: two apps, several services"]
+    direction TB
+    PB["Browser<br/>React / Next.js"] -->|"JSON (fetch)"| PA["FastAPI routes"]
+    PA --> PM["Pydantic schemas +<br/>SQLAlchemy models"]
+    PM --> PG[("Postgres")]
+    PA -->|enqueue| PR[("Redis")]
+    PR --> PW["Celery / RQ worker<br/>(separate process)"]
+    PW --> PM
+    PW -->|"pub/sub"| PR
+    PR -->|"WebSocket / SSE<br/>JSON events"| PB
+  end
+```
+
+The biggest difference is not the language. Rails sends **HTML** to the browser and keeps all state on the
+server; the typical Python + React setup sends **JSON** and keeps a second copy of state in the browser, which
+then needs its own types, fetching, caching and rendering code.
+
+### Concept-by-concept map
+
+| Concern | Rails 8 (here) | Python + TypeScript equivalent | Notes |
+|---|---|---|---|
+| Routing | `resources :screens` | FastAPI `@app.post("/screens")` / Next.js route handlers | Rails derives 7 REST routes from one line. |
+| Input validation | `params.expect(screen: [:query])` | Pydantic request model | Pydantic validates types too; Rails params are strings until the model casts them. |
+| Domain validation | Active Record validations, `Condition::SPECS` | Pydantic validators, `Literal[...]` / `Enum` fields | Same whitelist idea. In Python I'd write `indicator: Literal["rsi","macd",...]`. |
+| ORM | Active Record (model = table + behaviour) | SQLAlchemy 2.0 (mapped classes + separate session) | Active Record is "the object saves itself"; SQLAlchemy is a unit-of-work with an explicit session. |
+| Migrations | `bin/rails g migration`, `db/migrate/*.rb`, `schema.rb` | Alembic revisions | Both generate and version schema changes; Rails keeps a canonical `schema.rb`. |
+| Value objects | `Data.define` | `@dataclass(frozen=True)` / Pydantic `BaseModel` | Near one-to-one. |
+| Pure functions | `Indicators` module | NumPy / pandas (`rolling().mean()`, `ewm()`) | Python wins here: vectorised and battle-tested. Ruby needed hand-written SMA/EMA/RSI. |
+| Background jobs | Active Job + Solid Queue (DB-backed) | Celery / RQ / Dramatiq + Redis (or Arq) | Rails needs no broker; Python stacks usually add Redis. |
+| Scheduled jobs | `config/recurring.yml` (Solid Queue) | Celery beat / APScheduler / cron | |
+| Cache | `Rails.cache` → Solid Cache (SQLite) | Redis, or `functools.lru_cache` / `diskcache` | |
+| Real-time | `broadcast_append_to` + `turbo_stream_from` (Action Cable) | WebSocket or SSE endpoint + Redis pub/sub + React state update | In Rails this was 2 lines and no JavaScript. In React it's an endpoint, a hook, and client state. |
+| Templates / UI | ERB partials, rendered on the server | React components (TSX), rendered on the client or with SSR/RSC | Next.js Server Components move toward the Rails model (server renders, little client JS). |
+| Client behaviour | Stimulus (8-line controller) | React `useState` / event handlers | |
+| JS build | Importmaps, no bundler | Vite / Next.js (webpack/Turbopack), `node_modules` | |
+| Styling | One CSS file via Propshaft | Tailwind / CSS modules | |
+| Autoloading | Zeitwerk (path = constant) | Explicit `import` | Python is explicit; Rails is convention. |
+| Config / secrets | `credentials.yml.enc` + env vars | `.env` + `pydantic-settings` | |
+| Tests | Minitest; system tests with headless Chrome | pytest (+ fixtures), Playwright for E2E | pytest fixtures ≈ Rails test helpers; Playwright ≈ system tests. |
+| Lint / security | RuboCop, Brakeman, bundler-audit | Ruff, mypy/pyright, Bandit, pip-audit | |
+| LLM call | `anthropic` gem, JSON schema from `SPECS` | `anthropic` Python SDK, schema from Pydantic (`model_json_schema()`) | Python is nicer here: the Pydantic model *is* the schema and the validator. |
+| Deploy | Kamal + Docker to any host; Thruster | Docker + Fly/Render/ECS; Vercel for Next.js | |
+| Processes in dev | `bin/dev` (one) | API server + worker + Redis + Postgres + Next dev server | Usually `docker compose up`. |
+
+### The same three pieces, side by side
+
+**1. The whitelist (what the model is allowed to propose)**
+
+```ruby
+# Rails: app/models/condition.rb
+SPECS = { "rsi" => { operators: %w[below above], period: 14, value: 0..100 }, ... }
+validates :indicator, inclusion: { in: SPECS.keys }
+validate  :fits_spec
+```
+```python
+# Python: Pydantic
+class Condition(BaseModel):
+    indicator: Literal["rsi", "macd", "sma", "ema", "volume", "drawdown", "price"]
+    operator: Literal["above", "below", "crosses_up", "crosses_down"]
+    timeframe: Literal["daily", "weekly"] = "daily"
+    period: int | None = Field(None, ge=2, le=250)
+    value: float | None = None
+
+    @model_validator(mode="after")
+    def fits_spec(self): ...  # same per-indicator checks
+```
+
+**2. The background job**
+
+```ruby
+# Rails
+class RunScreenJob < ApplicationJob
+  def perform(screen) = screen.run
+end
+RunScreenJob.perform_later(screen)        # row in the queue DB
+```
+```python
+# Python: Celery
+@celery_app.task
+def run_screen(screen_id: int) -> None:
+    with Session() as session:
+        screen = session.get(Screen, screen_id)
+        run(screen, session)
+run_screen.delay(screen.id)               # message on Redis
+```
+
+**3. Streaming a result to the page**
+
+```ruby
+# Rails: model callback + one line in the view
+after_create_commit -> { broadcast_append_to screen, target: "matches" }
+# <%= turbo_stream_from @screen %>
+```
+```python
+# Python: publish an event...
+redis.publish(f"screen:{screen.id}", MatchOut.model_validate(match).model_dump_json())
+# ...a FastAPI WebSocket/SSE endpoint forwards it...
+```
+```tsx
+// ...and React turns JSON back into UI state
+useEffect(() => {
+  const es = new EventSource(`/screens/${id}/events`);
+  es.onmessage = (e) => setMatches((m) => [...m, JSON.parse(e.data)]);
+  return () => es.close();
+}, [id]);
+```
+
+### Where each one is the better tool
+
+| Rails 8 is better at | Python + TS is better at |
+|---|---|
+| A CRUD + background job + live-update app with almost no glue code | Numerical work: NumPy/pandas/polars, statsmodels, scikit-learn |
+| One language, one process, one repo, `bin/dev` | Research notebooks that become production code |
+| Server-rendered UI that still feels live (Turbo) | Rich client-side interaction (charts, grids, editors) |
+| Conventions: a new reader knows where everything is | Typed contracts end to end (Pydantic ↔ OpenAPI ↔ TypeScript) |
+| Ops: SQLite + Solid trifecta means no Redis or broker to run | The ML/LLM ecosystem (most SDKs and tools ship Python first) |
+
+### How I'd combine them on a trading desk
+
+Research, factors and backtests in **Python** (pandas/NumPy, notebooks → packages). The product shell (users,
+saved screens, audit trail, background runs, live result pages) in **Rails**, calling Python where the math
+lives, either as a small internal HTTP service or as precomputed tables both sides read. The boundary between
+them is the same as in this app: a typed, whitelisted contract, and every proposal logged.
+
+---
+
+## 16. Exercises (to make it stick)
 
 Each one touches a different part of the stack. All of them can be done with the existing tests as a guide.
 

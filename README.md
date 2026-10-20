@@ -4,7 +4,7 @@ By [Henry Zhang](https://www.officialhenryzhang.com/) ([GitHub](https://github.c
 
 A learning project: a plain-English stock screen in Rails 8 + Hotwire.
 
-**Study notes:** [How the Rails 8 stack is used here](docs/ARCHITECTURE.md): layer by layer, with architecture diagrams, "In 2007 / Now" comparisons, and exercises.
+**Study notes:** [How the Rails 8 stack is used here](docs/ARCHITECTURE.md): layer by layer, with architecture diagrams, "In 2007 / Now" comparisons, a Rails 8 vs. Python + TypeScript comparison, and exercises.
 
 Type something like
 
