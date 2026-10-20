@@ -21,11 +21,14 @@ RSpec.describe "Screen history", type: :system do
     visit screens_path
     click_link "Matches"
 
+    # Retrying matchers: the URL changes before the frame's new rows arrive, so
+    # reading the rows once (page.all(...).map) can catch the old, detached ones.
     expect(page).to have_current_path(/sort=matches_count/)
-    expect(page.all("#screens .ns-history__link").map(&:text).first).to eq "within 5% of the 52-week high"
+    expect(page).to have_css("#screens tbody tr:first-child .ns-history__link", exact_text: "within 5% of the 52-week high")
 
     click_link "Matches"
-    expect(page.all("#screens .ns-history__link").map(&:text).first).to eq "RSI under 30, MACD crossing up"
+    expect(page).to have_current_path(/direction=desc/)
+    expect(page).to have_css("#screens tbody tr:first-child .ns-history__link", exact_text: "RSI under 30, MACD crossing up")
   end
 
   it "deletes a screen in place and shows a toast" do
