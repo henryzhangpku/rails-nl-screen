@@ -18,7 +18,7 @@ and the app:
 4. **streams each match into the results table live** (Turbo Streams), with the value of every condition and a one-line "why it matched".
 5. **ranks the survivors**: each passing condition scores how far past its threshold the stock is (0 to 1; for a MACD cross, how recent it was), and matches are sorted by the average.
 6. **keeps a searchable history** at `/screens`: search as you type, filter, sort and paginate inside a Turbo Frame, delete with a toast.
-7. **treats the Claude prompt as data**: it lives in [PromptEngine](https://rubygems.org/gems/prompt_engine) (a mountable engine) at `/prompts`, where each edit becomes a numbered version and every screen records which version parsed it. The editor sits behind Rails 8's generated sign-in.
+7. **treats the Claude prompt as data**: it lives in [PromptEngine](https://rubygems.org/gems/prompt_engine) (a mountable engine) at `/prompts`, where each edit becomes a numbered version and every screen records which version parsed it, and `bin/rails prompts:eval` scores a version against a set of example screens. The editor sits behind Rails 8's generated sign-in.
 
 No React, no Node build, no paid data. Optional: if `ANTHROPIC_API_KEY` is set, Claude (`claude-sonnet-5-5`) *proposes* the typed screen as JSON, and the same whitelist validations decide what is kept. The model proposes; code decides. Without the key, the deterministic rule-based parser does everything.
 

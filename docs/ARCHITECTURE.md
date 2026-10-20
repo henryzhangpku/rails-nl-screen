@@ -292,11 +292,13 @@ creates an immutable `PromptVersion`), a playground and evaluations, all at `/pr
 
 ```ruby
 # app/models/screen_parser/claude.rb
-prompt = PromptEngine::Prompt.active.find_by(name: "screen-parser")
-rendered = PromptEngine.render("screen-parser", variables: { query: text })
-# => { system_message: "You translate…", content: "RSI under 30…", model: "claude-sonnet-5-5", … }
-chat.with_instructions(rendered[:system_message]).with_schema(SCHEMA).ask(rendered[:content])
+version ||= PromptEngine::Prompt.active.find_by(name: "screen-parser")&.current_version
+message = PromptEngine::VariableDetector.new(version.content).render(query: text)   # "{{query}}" -> the query
+chat.with_instructions(version.system_message).with_schema(SCHEMA).ask(message)
 ```
+
+It renders a specific `PromptVersion` rather than calling `PromptEngine.render(name)` (which only knows the
+current one), so an old version can be replayed for comparison.
 
 - The record is created by `db/seeds.rb` from `ScreenParser::Claude::SYSTEM_PROMPT`, with the user message
   as a template (`{{query}}`). If the record is missing or archived, the in-code prompt is used, so tests and a
@@ -312,6 +314,35 @@ chat.with_instructions(rendered[:system_message]).with_schema(SCHEMA).ask(render
 - PromptEngine's settings page can store API keys, encrypted with `encrypts :anthropic_api_key` (Active Record
   encryption, Rails 7+). `config/initializers/active_record_encryption.rb` derives those keys from
   `secret_key_base` unless real ones are in credentials. This app still reads the key from `ANTHROPIC_API_KEY`.
+
+### Evals: did the prompt edit make it better or worse?
+
+Editing a prompt in a browser is only safe if you can measure the edit. PromptEngine models that with an
+`EvalSet` (per prompt) of `TestCase`s, and an `EvalRun` per prompt version with one `EvalResult` per case.
+Its admin lists the runs, compares two of them side by side, and charts pass rate by version.
+
+```sh
+ANTHROPIC_API_KEY=... bin/rails prompts:eval            # current version
+ANTHROPIC_API_KEY=... VERSION=1 bin/rails prompts:eval  # replay an older version
+```
+
+- The cases live in git, in `db/evals/screen_parser.yml` (the five example queries plus four more), and
+  `db/seeds.rb` loads them into the eval set.
+- **Graded on what the code accepts, not on the JSON.** Each case's expected output is the sorted
+  `Condition#label`s that survive defaults and validation ("RSI(14) below 30"). `{"period": null}` and
+  `{"period": 14}` grade the same; a condition the whitelist rejects doesn't count.
+- A spec runs the rule-based parser through every case. That keeps the expected answers honest, and it gives
+  the deterministic baseline any prompt version has to match.
+- `PromptEval` (`app/models/prompt_eval.rb`) writes PromptEngine's own `EvalRun` / `EvalResult` rows, so its
+  run list, comparison page and metrics chart all work unchanged.
+
+Two things found in PromptEngine 1.0 while doing this, worth knowing if you adopt it:
+
+1. Its built-in runner (the "Run" button) only talks to **OpenAI's Evals API**: it uploads the cases as JSONL
+   and sends `prompt_version.model` to OpenAI, so a Claude prompt can't run there. It also grades by exact
+   string match on the raw model output, which is brittle for JSON.
+2. It stores `EvalResult` rows but no page shows them; the run and compare pages point to the OpenAI report.
+   `bin/rails prompts:eval` prints each failing case (actual vs. expected) instead.
 
 ### Signing in: the Rails 8 authentication generator
 
@@ -649,7 +680,7 @@ then needs its own types, fetching, caching and rendering code.
 | Autoloading | Zeitwerk (path = constant) | Explicit `import` | Python is explicit; Rails is convention. |
 | Config / secrets | `credentials.yml.enc` + env vars | `.env` + `pydantic-settings` | |
 | Auth | Generated `Authentication` concern + `has_secure_password` | FastAPI `Depends(current_user)` + passlib; NextAuth/Auth.js | Rails generates the code into your app; you own it. |
-| Prompt management | PromptEngine (mounted engine, versions in SQLite) | Langfuse / PromptLayer (hosted), or prompts in git | An engine is a full sub-app you mount with one route; Python has no direct equivalent. |
+| Prompt management | PromptEngine (mounted engine, versions and eval runs in SQLite) | Langfuse / PromptLayer (hosted), promptfoo for evals, or prompts in git | An engine is a full sub-app you mount with one route; Python has no direct equivalent. |
 | Plugins / sub-apps | Mountable engines (`mount X::Engine => "/x"`) | FastAPI `include_router` / mounted ASGI apps; Django apps | Engines bring their own migrations, views and assets. |
 | Tests | RSpec + FactoryBot; system specs with Cuprite | pytest (+ factory_boy), Playwright for E2E | `let` ≈ pytest fixtures; Playwright ≈ system tests. |
 | Lint / security | RuboCop, Brakeman, bundler-audit | Ruff, mypy/pyright, Bandit, pip-audit | |
@@ -757,8 +788,9 @@ Each one touches a different part of the stack. All of them can be done with the
    calling a small endpoint that renders the `_understood` partial as HTML.
 6. **Schedule a refresh.** Use `config/recurring.yml` (Solid Queue's cron) to pre-fetch bars every weekday
    after the US close.
-7. **Ship a prompt change safely.** Sign in, edit the screen-parser prompt at `/prompts`, run a screen, and
-   check the new version in its audit line. Then add an eval set in PromptEngine with the five
-   `Screen::EXAMPLES` and compare versions before activating one.
+7. **Ship a prompt change safely.** Sign in, edit the screen-parser prompt at `/prompts`, run
+   `bin/rails prompts:eval` for the new version and `VERSION=1` for the old one, and compare the two runs in the
+   eval set's page. Then add a case the rules parser gets wrong but Claude should get right (it must pass
+   for Claude only, so the rules-parser spec will need an exception list).
 8. **Deploy it.** Point `config/deploy.yml` at a small VPS, run `bin/rails credentials:edit` to create a
    master key, and `kamal setup`.
