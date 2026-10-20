@@ -142,5 +142,5 @@ configuration". Read in this order: `config/routes.rb`, `app/controllers/screens
 
 ## Not done (on purpose)
 
-- One admin user, by design: there is no sign-up and no roles. Sign-in (30-day sessions) guards the prompt editor and deleting screens; running and browsing screens is public, with creating one rate limited. No deploy secrets: before using Kamal you'd run `bin/rails credentials:edit` and fill in `config/deploy.yml`.
+- One admin user, by design: there is no sign-up and no roles. Sign-in (30-day sessions) guards the prompt editor and deleting screens; running and browsing screens is public, with creating one rate limited. Kamal is configured but not deployed (the Pages snapshot is the demo), so there are no deploy secrets: before using it you'd run `bin/rails credentials:edit` and fill in `config/deploy.yml`.
 - Prices are end-of-day, split-adjusted but not dividend-adjusted, from an unofficial API; this is a learning toy, not a trading tool.
