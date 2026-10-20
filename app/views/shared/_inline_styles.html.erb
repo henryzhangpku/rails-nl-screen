@@ -1,3 +1,3 @@
-<%# All component stylesheets concatenated, foundation first, for pages without an asset server (static demo, preview card). %>
+<%# Inlined for the static GitHub Pages export (bin/rails demo:export) and its preview card, which have no asset server; the live app links the same files with stylesheet_link_tag :app. Foundation first, then each component. %>
 <% files = Rails.root.glob("app/assets/stylesheets/*.css").sort_by { |f| [ f.basename.to_s == "foundation.css" ? 0 : 1, f.basename.to_s ] } %>
 <%= safe_join(files.map { |f| f.read.html_safe }, "\n") %>
