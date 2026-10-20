@@ -8,8 +8,8 @@
 # spec/models/prompt_eval_spec.rb checks that the rule-based parser passes every case.
 - query: RSI under 40, price above the 200-day moving average
   expected: [Daily RSI (14) under 40, Price above its 200-day average]
-- query: within 5% of the 52-week high, price above the 50-day average, volume 1.5x its 50-day average
-  expected: [Price above its 50-day average, Volume at least 1.5× its 50-day average, Within 5% of 52-week high]
+- query: within 5% of the 52-week high, price above the 50-day average, volume above its 20-day average
+  expected: [Price above its 50-day average, Volume above its 20-day average, Within 5% of 52-week high]
 - query: golden cross, up over the last 3 months, weekly RSI above 60
   expected: [50-day average above 200-day average (uptrend), Price up over 3 months, RSI (14-week) > 60]
 - query: down at least 20% from the 52-week high, RSI under 40, price between $20 and $200

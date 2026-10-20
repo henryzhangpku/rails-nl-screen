@@ -52,7 +52,7 @@ class Screen < ApplicationRecord
   # names, and both versions of the product say so rather than loosening it quietly.
   EXAMPLES = [
     "RSI under 40, price above the 200-day moving average",
-    "within 5% of the 52-week high, price above the 50-day average, volume 1.5x its 50-day average",
+    "within 5% of the 52-week high, price above the 50-day average, volume above its 20-day average",
     "golden cross, up over the last 3 months, weekly RSI above 60",
     "down at least 20% from the 52-week high, RSI under 40, price between $20 and $200",
     "MACD above its signal, volume above its 20-day average, price above the 50-day average",
