@@ -2,6 +2,30 @@
 #
 # SPECS is the whitelist: whatever the parser (or Claude) proposes must fit it,
 # or validation fails and the condition is dropped.
+# == Schema Information
+#
+# Table name: conditions
+# Database name: primary
+#
+#  id         :integer          not null, primary key
+#  indicator  :string           not null
+#  operator   :string           not null
+#  period     :integer
+#  position   :integer          default(0), not null
+#  timeframe  :string           default("daily"), not null
+#  value      :float
+#  created_at :datetime         not null
+#  updated_at :datetime         not null
+#  screen_id  :integer          not null
+#
+# Indexes
+#
+#  index_conditions_on_screen_id  (screen_id)
+#
+# Foreign Keys
+#
+#  screen_id  (screen_id => screens.id)
+#
 class Condition < ApplicationRecord
   belongs_to :screen
 

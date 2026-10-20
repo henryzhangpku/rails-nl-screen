@@ -71,3 +71,8 @@ gem "kaminari", "~> 1.2"
 
 # Prompts as versioned data, with an admin UI mounted at /prompts.
 gem "prompt_engine", "~> 1.0"
+
+group :development do
+  gem "annotaterb", "~> 4.25"         # schema comments at the top of each model, refreshed after db:migrate
+  gem "rails_live_reload", "~> 0.5.0" # reload the browser when a view, CSS or JS file changes
+end

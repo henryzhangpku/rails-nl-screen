@@ -1,5 +1,24 @@
 # A plain-English query plus the typed conditions we understood from it.
 # Running a screen scans the universe and records a Match per passing symbol.
+# == Schema Information
+#
+# Table name: screens
+# Database name: primary
+#
+#  id            :integer          not null, primary key
+#  error_message :string
+#  matches_count :integer          default(0), not null
+#  notes         :json             not null
+#  parser        :string
+#  proposal      :json             not null
+#  query         :text             not null
+#  scanned_count :integer          default(0), not null
+#  source        :string           default("rules"), not null
+#  status        :string           default("pending"), not null
+#  universe_size :integer          default(0), not null
+#  created_at    :datetime         not null
+#  updated_at    :datetime         not null
+#
 class Screen < ApplicationRecord
   has_many :conditions, -> { order(:position) }, dependent: :destroy
   has_many :matches, -> { order(score: :desc, id: :asc) }, dependent: :destroy # ranked, strongest first

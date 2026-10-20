@@ -1,4 +1,24 @@
 # One day of OHLCV for one symbol. This table is our local cache of market data.
+# == Schema Information
+#
+# Table name: bars
+# Database name: primary
+#
+#  id         :integer          not null, primary key
+#  close      :float            not null
+#  date       :date             not null
+#  high       :float            not null
+#  low        :float            not null
+#  open       :float            not null
+#  symbol     :string           not null
+#  volume     :integer          default(0), not null
+#  created_at :datetime         not null
+#  updated_at :datetime         not null
+#
+# Indexes
+#
+#  index_bars_on_symbol_and_date  (symbol,date) UNIQUE
+#
 class Bar < ApplicationRecord
   HISTORY = 2.years
 
