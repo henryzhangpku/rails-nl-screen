@@ -3,7 +3,8 @@ namespace :prompts do
   task eval: :environment do
     abort "Set the API key for #{ScreenParser::LLM.request_for("").model} (e.g. ANTHROPIC_API_KEY, DEEPSEEK_API_KEY): the evals call it." unless ScreenParser::LLM.enabled?
 
-    prompt = PromptEngine::Prompt.find_by!(slug: ScreenParser::LLM::PROMPT_NAME)
+    prompt = PromptEngine::Prompt.find_by(slug: ScreenParser::LLM::PROMPT_NAME) or
+      abort "No #{ScreenParser::LLM::PROMPT_NAME.inspect} prompt in this database. Run bin/rails db:seed first."
     version = ENV["VERSION"] ? prompt.versions.find_by!(version_number: ENV["VERSION"]) : prompt.current_version
     eval_run = PromptEval.new(PromptEval.load_set(prompt), version: version).run
 
