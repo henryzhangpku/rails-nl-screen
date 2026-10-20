@@ -36,7 +36,7 @@ Suggested reading order for the code: `config/routes.rb` → `app/controllers/sc
 | Real-time | Action Cable on **Solid Cable**, Turbo Streams and Turbo 8 page refreshes | `app/models/match.rb`, `app/models/screen.rb`, `config/cable.yml` |
 | Front end | Hotwire: Turbo Drive, Turbo Streams, one Stimulus controller | `app/views/**`, `app/javascript/controllers/examples_controller.js` |
 | JavaScript delivery | **Importmaps** (no bundler, no `node_modules`) | `config/importmap.rb` |
-| CSS / assets | **Propshaft** serving one hand-written stylesheet | `app/assets/stylesheets/application.css` |
+| CSS / assets | **Propshaft** serving plain CSS, one file per component, BEM names (`ns-` prefix) | `app/assets/stylesheets/*.css` |
 | External APIs | Net::HTTP (Yahoo chart API), **RubyLLM** (optional, for Claude) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/claude.rb` |
 | Tests | **RSpec** (rspec-rails): model, request and system specs (Selenium + headless Chrome) | `spec/**` |
 | CI | GitHub Actions: Brakeman, bundler-audit, importmap audit, RuboCop, tests | `.github/workflows/ci.yml` |
@@ -401,8 +401,14 @@ broadcasts *must* go through a shared store to reach the browser. `bin/rails db:
 
 - **ERB + partials**, shared between the live app and the static demo: `screens/_understood`,
   `screens/_progress`, `screens/_results`, `matches/_match`.
-- **Propshaft** serves `application.css` with a fingerprinted URL. No Sass, no Tailwind: one stylesheet built
-  on CSS custom properties, with light and dark palettes that follow the viewer's system setting.
+- **Propshaft** serves every file in `app/assets/stylesheets/` with a fingerprinted URL, and
+  `stylesheet_link_tag :app` links them all: no Sass, no Tailwind, no `@import`, no build step.
+- **Plain CSS, one file per component, BEM names with a prefix**: `.ns-block__element--modifier`
+  (`ns-table__cell--ticker`, `ns-card__count--zero`). `foundation.css` holds the colour and type tokens
+  (`--ns-*` custom properties) with light and dark palettes that follow the viewer's system setting; each
+  component file (`shell`, `compose`, `understood`, `stats`, `results`, `cards`) uses only those tokens. The
+  prefix keeps the styles from colliding with anything else on a page, which matters if this ever becomes an
+  engine mounted inside another app.
 - The same partial (`matches/_match`) renders a row in three situations: the initial page, a Turbo Stream
   broadcast, and a static export. That reuse is the main payoff of server-rendered HTML.
 
@@ -437,6 +443,9 @@ flowchart LR
   crafted bars and a `FakeClaude` that proposes an invalid condition. Where a real library object is involved
   (the RubyLLM chat), an RSpec `instance_double` verifies that the stub matches the real class's methods.
 - **Known-value tests** for every indicator. RSI is checked against Wilder's published worked example.
+- **External APIs are stubbed with WebMock**, and real network access is disabled for the whole suite
+  (`spec/support/webmock.rb`). The Yahoo spec checks the request it makes and that HTTP errors and timeouts
+  become `MarketData::Error`.
 - **System test** runs the real UI in headless Chrome with synthetic prices and an inline job.
 - **CI** (`.github/workflows/ci.yml`) runs Brakeman, bundler-audit, importmap audit, RuboCop (omakase style),
   the test suite, and the system test on every push.
@@ -541,7 +550,7 @@ then needs its own types, fetching, caching and rendering code.
 | Templates / UI | ERB partials, rendered on the server | React components (TSX), rendered on the client or with SSR/RSC | Next.js Server Components move toward the Rails model (server renders, little client JS). |
 | Client behaviour | Stimulus (8-line controller) | React `useState` / event handlers | |
 | JS build | Importmaps, no bundler | Vite / Next.js (webpack/Turbopack), `node_modules` | |
-| Styling | One CSS file via Propshaft | Tailwind / CSS modules | |
+| Styling | Plain CSS, BEM + prefix, one file per component, via Propshaft | Tailwind / CSS modules | |
 | Autoloading | Zeitwerk (path = constant) | Explicit `import` | Python is explicit; Rails is convention. |
 | Config / secrets | `credentials.yml.enc` + env vars | `.env` + `pydantic-settings` | |
 | Tests | RSpec; system specs with headless Chrome | pytest (+ fixtures), Playwright for E2E | `let` ≈ pytest fixtures; Playwright ≈ system tests. |

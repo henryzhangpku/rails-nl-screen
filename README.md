@@ -103,7 +103,7 @@ look in this repo.
 | Partial page updates via RJS | **Turbo Streams** broadcast from models over WebSockets | `Match` appends rows; `Screen` sends `broadcast_refresh_to` |
 | Full re-render or hand-written DOM patching | **Turbo 8 page refresh + morphing**: "re-fetch this page and morph the difference" | `turbo_refreshes_with method: :morph` in `screens/show.html.erb` |
 | `javascripts/*.js` + inline JS | **Stimulus** controllers: small classes wired up with `data-` attributes | `app/javascript/controllers/examples_controller.js` (`data-action="examples#fill"`) |
-| Sprockets (from 3.1), then Webpacker | **Importmaps** (no bundler, no Node) + **Propshaft** (just serves and fingerprints files) | `config/importmap.rb`, `app/javascript/application.js`, `app/assets/stylesheets/application.css` |
+| Sprockets (from 3.1), then Webpacker | **Importmaps** (no bundler, no Node) + **Propshaft** (just serves and fingerprints files) | `config/importmap.rb`, `app/javascript/application.js`, `app/assets/stylesheets/*.css` (one file per component) |
 | `vendor/plugins`, `config.gem` | **Bundler** + `Gemfile.lock` | `Gemfile` (`ruby_llm`, `rspec-rails` added with `bundle add`) |
 | `require_dependency`, const_missing magic | **Zeitwerk** autoloading: file path = constant name | `app/models/market_data/yahoo.rb` is `MarketData::Yahoo`; `app/models/screen_parser/claude.rb` is `ScreenParser::Claude` |
 | BackgrounDRb, `script/runner` from cron | **Active Job** + **Solid Queue** (jobs in a database table, no Redis) | `app/jobs/run_screen_job.rb`, `config/queue.yml`, `config/puma.rb` (`plugin :solid_queue`) |
