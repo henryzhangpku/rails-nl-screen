@@ -1,7 +1,7 @@
 namespace :prompts do
   desc "Run the screen parser's eval set against a prompt version (VERSION=n, default: current). Needs the API key for the model's provider."
   task eval: :environment do
-    abort "Set the API key for #{ScreenParser::LLM.request_for("").model} (e.g. ANTHROPIC_API_KEY, DEEPSEEK_API_KEY): the evals call it." unless ScreenParser::LLM.enabled?
+    abort "Set the API key for #{ScreenParser::LLM.request_for("").model} (e.g. DEEPSEEK_API_KEY): the evals call it." unless ScreenParser::LLM.enabled?
 
     prompt = PromptEngine::Prompt.find_by(slug: ScreenParser::LLM::PROMPT_NAME) or
       abort "No #{ScreenParser::LLM::PROMPT_NAME.inspect} prompt in this database. Run bin/rails db:seed first."

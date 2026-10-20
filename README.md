@@ -20,7 +20,7 @@ and the app:
 6. **keeps a searchable history** at `/screens`: search as you type, filter, sort and paginate inside a Turbo Frame, delete with a toast.
 7. **treats the LLM prompt as data**: it lives in [PromptEngine](https://rubygems.org/gems/prompt_engine) (a mountable engine) at `/prompts`, where each edit becomes a numbered version and every screen records which version parsed it, and `bin/rails prompts:eval` scores a version against a set of example screens. The editor sits behind Rails 8's generated sign-in.
 
-No React, no Node build, no paid data. Optional: with an API key, an LLM *proposes* the typed screen as JSON (Claude `claude-sonnet-5-5` by default; any provider [RubyLLM](https://rubyllm.com) supports, e.g. DeepSeek), and the same whitelist validations decide what is kept. The model proposes; code decides. Without a key, the deterministic rule-based parser does everything.
+No React, no Node build, no paid data. Optional: with an API key, an LLM *proposes* the typed screen as JSON (DeepSeek `deepseek-v4-flash` by default; any provider [RubyLLM](https://rubyllm.com) supports works), and the same whitelist validations decide what is kept. The model proposes; code decides. Without a key, the deterministic rule-based parser does everything.
 
 ## Demo
 
@@ -51,11 +51,11 @@ Useful switches:
 
 ```sh
 MARKET_DATA=synthetic bin/dev          # offline: deterministic fake prices instead of Yahoo
-ANTHROPIC_API_KEY=sk-ant-... bin/dev   # let Claude propose the parse (still validated by code)
-DEEPSEEK_API_KEY=sk-... SCREEN_PARSER_MODEL=deepseek-v4-flash bin/dev   # or DeepSeek (or any RubyLLM provider)
+DEEPSEEK_API_KEY=sk-... bin/dev                          # let DeepSeek propose the parse (still validated by code)
+OPENAI_API_KEY=sk-... SCREEN_PARSER_MODEL=gpt-5 bin/dev   # or any other RubyLLM provider
 ```
 
-Not every provider enforces the JSON schema the parser asks for. Anthropic and OpenAI do. DeepSeek's chat API
+Not every provider enforces the JSON schema the parser asks for. OpenAI's does. DeepSeek's chat API
 doesn't (RubyLLM warns and falls back to plain JSON mode), so for DeepSeek the app uses its Responses API, which
 takes the schema; set `SCREEN_PARSER_PROTOCOL=chat_completions` to go back. Either way the `Condition`
 validations are the real boundary: anything off-schema is dropped, not trusted.

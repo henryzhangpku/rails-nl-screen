@@ -39,7 +39,7 @@ Suggested reading order for the code: `config/routes.rb` → `app/controllers/sc
 | Front end | Hotwire: Turbo Drive, Turbo Streams, one Stimulus controller | `app/views/**`, `app/javascript/controllers/examples_controller.js` |
 | JavaScript delivery | **Importmaps** (no bundler, no `node_modules`) | `config/importmap.rb` |
 | CSS / assets | **Propshaft** serving plain CSS, one file per component, BEM names (`ns-` prefix) | `app/assets/stylesheets/*.css` |
-| External APIs | Net::HTTP (Yahoo chart API), **RubyLLM** (optional; any provider: Anthropic, DeepSeek, OpenAI, Gemini…) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/llm.rb` |
+| External APIs | Net::HTTP (Yahoo chart API), **RubyLLM** (optional; DeepSeek by default, any provider: OpenAI, Gemini, …) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/llm.rb` |
 | Tests | **RSpec** (rspec-rails), FactoryBot, WebMock; system specs with **Cuprite** (headless Chrome over CDP) | `spec/**` |
 | CI | GitHub Actions: Brakeman, bundler-audit, importmap audit, RuboCop, tests | `.github/workflows/ci.yml` |
 | Dev tooling | **annotaterb** (schema comments at the top of each model), **rails_live_reload** (browser refreshes on save) | `.annotaterb.yml`, `lib/tasks/annotate_rb.rake` |
@@ -76,7 +76,7 @@ flowchart TB
   end
 
   Y["Yahoo chart API<br/>daily OHLCV"]
-  A["LLM API<br/>(Anthropic, DeepSeek, …)"]
+  A["LLM API<br/>(DeepSeek by default)"]
 
   UI -- "POST /screens" --> C
   C --> P
@@ -157,7 +157,7 @@ erDiagram
 
   SCREENS {
     text query
-    string source "rules | claude"
+    string source "rules | llm"
     string parser "e.g. rules v1, or model + prompt fingerprint"
     json proposal "raw proposal before validation (audit)"
     string status "enum: pending running done failed"
@@ -278,7 +278,7 @@ flowchart TD
   clause is matched by one rule (RSI, MACD, volume, 52-week drawdown, moving average, price).
 - The optional LLM path uses **RubyLLM** (`RubyLLM.chat(...).with_instructions(...).with_schema(SCHEMA).ask(text)`),
   Ruby's LiteLLM: one client, many providers. The provider follows from the model name in RubyLLM's registry
-  (`claude-sonnet-5-5` → Anthropic, `deepseek-v4-flash` → DeepSeek, `gpt-5` → OpenAI); change the model in the
+  (`deepseek-v4-flash` → DeepSeek, the default; `gpt-5` → OpenAI; `gemini-2.5-flash` → Gemini); change the model in the
   prompt editor, or set `SCREEN_PARSER_MODEL`, and screens use that provider if its key is set. For a model the
   registry doesn't list, name the provider in the prompt's metadata (`{"provider": "deepseek"}`) or
   `SCREEN_PARSER_PROVIDER`.
@@ -287,7 +287,7 @@ flowchart TD
 
   | Provider / protocol | Schema enforced by the provider? |
   |---|---|
-  | Anthropic, OpenAI | Yes (strict JSON schema) |
+  | OpenAI | Yes (strict JSON schema) |
   | DeepSeek, Responses API (`/responses`): **this app's default for DeepSeek** | Sent as `text.format: json_schema` |
   | DeepSeek, chat completions (`SCREEN_PARSER_PROTOCOL=chat_completions`) | **No.** It only promises *a* JSON object; RubyLLM logs a warning and falls back to `json_object` mode |
 
@@ -298,11 +298,10 @@ flowchart TD
   `SCREEN_PARSER_PROTOCOL` override it. `spec/models/screen_parser/llm_deepseek_spec.rb` drives RubyLLM's real HTTP
   client against stubbed DeepSeek endpoints for both protocols.
 - Measured against DeepSeek's live API, `deepseek-v4-flash` on prompt v1, 2026-10-20: **9/9** over the Responses
-  API (schema enforced, no fallback warning) and **9/9** over chat completions (`json_object` mode). Not yet
-  measured: Claude.
+  API (schema enforced, no fallback warning) and **9/9** over chat completions (`json_object` mode).
 - The parser is injected (`Screen.from_query(query, parser:)`), which is how the tests swap in fakes. The parser is injected (`Screen.from_query(query, parser:)`), which is
   how the tests swap in fakes without a mocking library.
-- Every screen stores the raw proposal and a parser label (`rules v1`; `claude-sonnet-5-5, prompt screen-parser v3`
+- Every screen stores the raw proposal and a parser label (`rules v1`; `deepseek-v4-flash, prompt screen-parser v3`
   when the prompt came from PromptEngine; or the model plus a fingerprint of the in-code prompt and schema), so any
   result can be traced back to exactly what proposed it.
 
@@ -338,7 +337,7 @@ current one), so an old version can be replayed for comparison.
 - PromptEngine's settings page can store API keys, encrypted with `encrypts :anthropic_api_key` (Active Record
   encryption, Rails 7+). `config/initializers/active_record_encryption.rb` derives those keys from
   `secret_key_base` unless real ones are in credentials. This app still reads provider keys from env vars
-  (`ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, … in `config/initializers/ruby_llm.rb`).
+  (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, … in `config/initializers/ruby_llm.rb`).
 
 ### Evals: did the prompt edit make it better or worse?
 
@@ -347,9 +346,9 @@ Editing a prompt in a browser is only safe if you can measure the edit. PromptEn
 Its admin lists the runs, compares two of them side by side, and charts pass rate by version.
 
 ```sh
-ANTHROPIC_API_KEY=... bin/rails prompts:eval            # current version
-ANTHROPIC_API_KEY=... VERSION=1 bin/rails prompts:eval  # replay an older version
-DEEPSEEK_API_KEY=... SCREEN_PARSER_MODEL=deepseek-v4-flash bin/rails prompts:eval  # same cases, another provider
+DEEPSEEK_API_KEY=... bin/rails prompts:eval                          # current version
+DEEPSEEK_API_KEY=... VERSION=1 bin/rails prompts:eval                # replay an older version
+OPENAI_API_KEY=... SCREEN_PARSER_MODEL=gpt-5 bin/rails prompts:eval  # same cases, another provider
 ```
 
 - The cases live in git, in `db/evals/screen_parser.yml` (the five example queries plus four more), and
@@ -599,7 +598,7 @@ flowchart LR
 
 - **Dependency injection instead of mocks.** `Screen#run(symbols, source:)` and
   `Screen.from_query(query, parser:)` accept collaborators, so tests pass a `FakeSource` module that returns
-  crafted bars and a `FakeClaude` that proposes an invalid condition. Where a real library object is involved
+  crafted bars and a fake LLM parser that proposes an invalid condition. Where a real library object is involved
   (the RubyLLM chat), an RSpec `instance_double` verifies that the stub matches the real class's methods.
 - **Known-value tests** for every indicator. RSI is checked against Wilder's published worked example.
 - **External APIs are stubbed with WebMock**, and real network access is disabled for the whole suite
@@ -722,7 +721,7 @@ then needs its own types, fetching, caching and rendering code.
 | Plugins / sub-apps | Mountable engines (`mount X::Engine => "/x"`) | FastAPI `include_router` / mounted ASGI apps; Django apps | Engines bring their own migrations, views and assets. |
 | Tests | RSpec + FactoryBot; system specs with Cuprite | pytest (+ factory_boy), Playwright for E2E | `let` ≈ pytest fixtures; Playwright ≈ system tests. |
 | Lint / security | RuboCop, Brakeman, bundler-audit | Ruff, mypy/pyright, Bandit, pip-audit | |
-| LLM call | RubyLLM, `with_schema` built from `SPECS` | `anthropic` Python SDK (or LiteLLM), schema from Pydantic (`model_json_schema()`) | Python is nicer here: the Pydantic model *is* the schema and the validator. |
+| LLM call | RubyLLM, `with_schema` built from `SPECS` | a provider SDK (`openai`, …) or LiteLLM, schema from Pydantic (`model_json_schema()`) | Python is nicer here: the Pydantic model *is* the schema and the validator. |
 | Deploy | Kamal + Docker to any host; Thruster | Docker + Fly/Render/ECS; Vercel for Next.js | |
 | Processes in dev | `bin/dev` (one) | API server + worker + Redis + Postgres + Next dev server | Usually `docker compose up`. |
 

@@ -37,7 +37,7 @@ RSpec.describe ScreenParser::LLM do
   end
 
   it "labels screens with the model and a fingerprint of the in-code prompt when PromptEngine has none" do
-    expect(described_class.label).to match(/\Aclaude-sonnet-5-5, prompt [0-9a-f]{8}\z/)
+    expect(described_class.label).to match(/\Adeepseek-v4-flash, prompt [0-9a-f]{8}\z/)
   end
 
   context "with the prompt stored in PromptEngine" do
@@ -54,10 +54,10 @@ RSpec.describe ScreenParser::LLM do
     end
 
     it "labels screens with the prompt version, which goes up with every edit" do
-      expect(described_class.label).to eq "claude-sonnet-5-5, prompt screen-parser v1"
+      expect(described_class.label).to eq "deepseek-v4-flash, prompt screen-parser v1"
 
       prompt.update!(system_message: "Edited again")
-      expect(described_class.label).to eq "claude-sonnet-5-5, prompt screen-parser v2"
+      expect(described_class.label).to eq "deepseek-v4-flash, prompt screen-parser v2"
     end
 
     it "falls back to the in-code prompt when the stored one is archived" do
@@ -84,7 +84,7 @@ RSpec.describe ScreenParser::LLM do
     end
 
     it "follows the model's provider in RubyLLM's registry" do
-      expect(described_class.provider_for("claude-sonnet-5-5")).to eq "anthropic"
+      expect(described_class.provider_for("gpt-5")).to eq "openai"
       expect(described_class.provider_for("deepseek-v4-flash")).to eq "deepseek"
       expect(described_class.provider_for("not-a-model")).to be_nil
     end

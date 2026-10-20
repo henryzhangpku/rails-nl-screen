@@ -19,7 +19,7 @@ FactoryBot.define do
 
     trait :from_llm do
       source { "llm" }
-      parser { "claude-sonnet-5-5, prompt 00000000" }
+      parser { "deepseek-v4-flash, prompt 00000000" }
     end
 
     # create(:screen, :with_matches, matches: 3)

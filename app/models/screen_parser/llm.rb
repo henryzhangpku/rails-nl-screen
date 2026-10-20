@@ -3,11 +3,11 @@
 # the model can suggest but only code decides.
 #
 # Any provider RubyLLM supports works: the provider follows from the model name
-# (claude-* -> Anthropic, deepseek-* -> DeepSeek, gpt-* -> OpenAI, gemini-* -> Gemini).
+# (deepseek-* -> DeepSeek, gpt-* -> OpenAI, gemini-* -> Gemini, ...).
 # The model is the prompt version's (edit it at /prompts), or SCREEN_PARSER_MODEL.
 # Used only when that provider's API key is set (config/initializers/ruby_llm.rb).
 module ScreenParser::LLM
-  MODEL = "claude-sonnet-5-5"
+  MODEL = "deepseek-v4-flash"
 
   SCHEMA = {
     type: "object",

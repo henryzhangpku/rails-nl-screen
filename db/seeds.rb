@@ -10,6 +10,9 @@ prompt = PromptEngine::Prompt.find_or_create_by!(slug: ScreenParser::LLM::PROMPT
   prompt.model = ScreenParser::LLM::MODEL
   prompt.status = "active"
 end
+# The default model moved to DeepSeek; move databases seeded before that. Saving it
+# makes a new prompt version, so the switch is on record in the prompt's history.
+prompt.update!(model: ScreenParser::LLM::MODEL) if prompt.model == "claude-sonnet-5-5"
 
 # Its eval set: the cases in db/evals/screen_parser.yml. Run them with bin/rails prompts:eval.
 PromptEval.load_set(prompt)

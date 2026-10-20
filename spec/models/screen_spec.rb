@@ -18,10 +18,10 @@ RSpec.describe Screen do
     end
   end
 
-  # Pretends to be ScreenParser::Claude, proposing one good and two bad conditions.
-  let(:fake_claude) do
+  # Pretends to be ScreenParser::LLM, proposing one good and two bad conditions.
+  let(:fake_llm) do
     Module.new do
-      def self.label = "fake-claude"
+      def self.label = "fake-llm"
 
       def self.parse(_text)
         ScreenParser::Result.new([ { indicator: "rsi", operator: "above", value: 50, timeframe: "daily", period: nil },
@@ -32,7 +32,7 @@ RSpec.describe Screen do
     end
   end
 
-  let(:broken_claude) { Module.new { def self.parse(_text) = raise(Timeout::Error) } }
+  let(:broken_llm) { Module.new { def self.parse(_text) = raise(Timeout::Error) } }
 
   describe ".from_query" do
     it "builds validated conditions with the rule-based parser" do
@@ -42,17 +42,17 @@ RSpec.describe Screen do
       expect(screen.conditions.map(&:label)).to eq [ "RSI(14) below 30", "MACD crosses above signal" ]
     end
 
-    it "lets Claude only propose: invalid conditions are dropped and reported" do
-      screen = described_class.from_query("anything", parser: fake_claude)
-      expect(screen).to have_attributes(source: "llm", parser: "fake-claude")
+    it "lets the LLM only propose: invalid conditions are dropped and reported" do
+      screen = described_class.from_query("anything", parser: fake_llm)
+      expect(screen).to have_attributes(source: "llm", parser: "fake-llm")
       expect(screen.conditions.map(&:label)).to eq [ "RSI(14) above 50" ]
       expect(screen.notes.size).to eq 3
       expect(screen.notes.first).to match(/Dropped rsi above 500/)
       expect(screen.proposal["conditions"].size).to eq 3 # the raw proposal is kept, including what was dropped
     end
 
-    it "falls back to the rules when Claude fails" do
-      screen = described_class.from_query("RSI under 30", parser: broken_claude)
+    it "falls back to the rules when the LLM fails" do
+      screen = described_class.from_query("RSI under 30", parser: broken_llm)
       expect(screen).to have_attributes(source: "rules", parser: "rules v1")
       expect(screen.conditions.map(&:label)).to eq [ "RSI(14) below 30" ]
       expect(screen.notes.first).to match(/rule-based parser was used/)
