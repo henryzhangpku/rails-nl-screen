@@ -124,4 +124,56 @@ RSpec.describe ScreenParser::LLM do
     expect(result.conditions).to eq [ { indicator: "rsi" } ]
     expect(result.unrecognized).to eq []
   end
+
+  # A model can still reply outside the schema (not every provider enforces it).
+  # Whatever it sends, the screen ends with that condition dropped and noted, or
+  # parsed by the rules instead; never with an exception.
+  describe "odd replies, through Screen.from_query" do
+    let(:good) { { "indicator" => "rsi", "timeframe" => "daily", "operator" => "below", "period" => 14, "value" => 30 } }
+    let(:parser) do
+      llm, chat = described_class, self.chat
+      Module.new do
+        define_singleton_method(:label) { "test-llm" }
+        define_singleton_method(:parse) { |text| llm.parse(text, chat: chat) }
+      end
+    end
+
+    def screen_for(parsed)
+      allow(chat).to receive(:ask).and_return(Struct.new(:finish_reason, :parsed).new(:stop, parsed))
+      Screen.from_query("RSI under 30", parser: parser)
+    end
+
+    {
+      "an array value"   => { "value" => [ 30 ] },
+      "an object period" => { "period" => {} }
+    }.each do |what, override|
+      it "drops a condition with #{what} and says why" do
+        screen = screen_for("conditions" => [ good.merge(override), good ], "unrecognized" => [])
+
+        expect(screen.source).to eq "llm"
+        expect(screen.conditions.map(&:label)).to eq [ "RSI(14) below 30" ]
+        expect(screen.notes).to contain_exactly(/\ADropped .*: #{override.keys.first} must be a number or text\z/)
+      end
+    end
+
+    it "drops a numeric indicator through the Condition validations" do
+      screen = screen_for("conditions" => [ good.merge("indicator" => 5) ], "unrecognized" => [])
+
+      expect(screen.conditions).to be_empty
+      expect(screen.notes).to contain_exactly(/\ADropped 5 .*Indicator is not included in the list/)
+      expect(screen).not_to be_valid
+    end
+
+    it "falls back to the rules when conditions is not an array" do
+      screen = screen_for("conditions" => "x", "unrecognized" => [])
+
+      expect(screen).to have_attributes(source: "rules", parser: "rules v1")
+      expect(screen.conditions.map(&:label)).to eq [ "RSI(14) below 30" ]
+      expect(screen.notes).to contain_exactly(/MalformedResponse/)
+    end
+
+    it "falls back to the rules when the reply is not JSON at all" do
+      expect(screen_for("I can't help with that").source).to eq "rules"
+    end
+  end
 end

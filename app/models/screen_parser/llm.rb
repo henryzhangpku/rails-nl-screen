@@ -9,6 +9,10 @@
 module ScreenParser::LLM
   MODEL = "deepseek-v4-flash"
 
+  # Raised for a reply the parser can't use at all; Screen falls back to the rules.
+  class Error < StandardError; end
+  class MalformedResponse < Error; end
+
   SCHEMA = {
     type: "object",
     additionalProperties: false,
@@ -114,8 +118,13 @@ module ScreenParser::LLM
     raise "#{request.model} stopped early (#{response.finish_reason})" unless response.finish_reason.in?([ :stop, nil ])
 
     # Not every provider/protocol enforces SCHEMA (DeepSeek's chat completions only promise
-    # *a* JSON object), so read it defensively; the Condition validations do the rest.
-    json = response.parsed.to_h
-    ScreenParser::Result.new(Array(json["conditions"]).grep(Hash).map(&:symbolize_keys), Array(json["unrecognized"]).map(&:to_s))
+    # *a* JSON object), so read it defensively. No conditions array means no usable reply;
+    # otherwise Screen.from_query type-checks each condition and Condition validates it,
+    # while the raw proposal is kept for the audit view.
+    json = response.parsed.is_a?(Hash) ? response.parsed : {}
+    conditions = json["conditions"]
+    raise MalformedResponse, "#{request.model} replied without a conditions array" unless conditions.is_a?(Array)
+
+    ScreenParser::Result.new(conditions.grep(Hash).map(&:symbolize_keys), Array(json["unrecognized"]).map(&:to_s))
   end
 end

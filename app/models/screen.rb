@@ -58,6 +58,14 @@ class Screen < ApplicationRecord
     screen = new(query: query.to_s.strip)
     proposal = screen.propose_with(parser)
     proposal.conditions.each do |attrs|
+      # Only scalars reach Condition: an array or object (which a model can still send)
+      # would fail on type casting, or quietly cast to nil and pick up a default.
+      unusable = attrs.slice(*ATTRIBUTES).reject { |_, value| value in String | Numeric | nil }
+      if unusable.any?
+        screen.notes << "Dropped #{attrs.compact.values.join(" ")}: #{unusable.keys.to_sentence} must be a number or text"
+        next
+      end
+
       condition = Condition.new(attrs.slice(*ATTRIBUTES).merge(screen: screen, position: screen.conditions.size))
       if condition.valid?
         screen.conditions << condition
