@@ -341,8 +341,9 @@ current one), so an old version can be replayed for comparison.
   from the app's. Its migrations are copied into the app with `bin/rails prompt_engine:install:migrations`
   (here: `db/migrate/*_install_prompt_engine.prompt_engine.rb`), then run like any other. Its plain BEM CSS is
   served by Propshaft straight from the gem.
-- Which PromptEngine: the gem's GitHub `main` (the last rubygems release, 1.0.0, is a year older), via a fork
-  with three fixes, each also a separate branch for upstream review. See "Running on a fork" below.
+- Which PromptEngine: Avi Flombaum's engine ([aviflombaum/prompt_engine](https://github.com/aviflombaum/prompt_engine)),
+  from its GitHub `main` (the last rubygems release, 1.0.0, is a year older), via a fork with three fixes, each
+  also a separate branch for upstream review. See "Running on a fork" below.
 - PromptEngine's settings page can store API keys, encrypted with `encrypts :anthropic_api_key` (Active Record
   encryption, Rails 7+). `config/initializers/active_record_encryption.rb` derives those keys from
   `secret_key_base` unless real ones are in credentials. This app still reads provider keys from env vars
@@ -376,9 +377,10 @@ honest score.
 
 ### Running on a fork: three fixes to PromptEngine
 
-Reading the engine's source turned up three gaps, still present on its `main`. The app runs on a fork that
-fixes them (`Gemfile`: `github: "henryzhangpku/prompt_engine", branch: "nl-screen"`); each fix is also its own
-branch off `main`, with specs and a CHANGELOG entry, ready to propose upstream.
+PromptEngine is Avi Flombaum's work; the fork's only changes are the three fixes below. Reading the engine's
+source turned up three gaps, still present on its `main`. The app runs on a fork that fixes them (`Gemfile`:
+`github: "henryzhangpku/prompt_engine", branch: "nl-screen"`); each fix is also its own branch off `main`, with
+specs and a CHANGELOG entry, ready to propose upstream.
 
 | Branch | Problem | Fix |
 |---|---|---|
