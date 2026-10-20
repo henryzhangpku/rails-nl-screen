@@ -207,7 +207,9 @@ class Screen < ApplicationRecord
       # Recognized but refused (an EMA, revenue growth...): say why. Not recognized at all: a hint.
       refused = not_screened.reject { _1["reason"] == ScreenParser::NO_RULE }
       if refused.any?
-        errors.add(:base, "Nothing in that can be screened here: " + refused.map { "#{_1["text"]} (#{_1["reason"]})" }.join("; "))
+        # Show people the reasons; a raw model proposal (JSON) belongs in the audit spec, not the message.
+        items = refused.map { |item| item["text"].to_s.lstrip.start_with?("{", "[") ? item["reason"] : "#{item["text"]} (#{item["reason"]})" }
+        errors.add(:base, "Nothing in that can be screened here: " + items.uniq.join("; "))
       else
         errors.add(:base, "I couldn't turn that into any screen conditions. Try e.g. \"RSI under 30\".")
       end
