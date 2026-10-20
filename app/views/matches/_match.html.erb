@@ -1,11 +1,11 @@
 <tr id="<%= dom_id(match) %>">
-  <td class="rank"><%= (match_counter + 1 if local_assigns[:match_counter]) %></td>
-  <th class="ticker"><%= match.symbol %></th>
-  <td>
-    <span class="score"><%= number_with_precision(match.score, precision: 2) %><span class="bar"><span style="--w: <%= (match.score * 100).round %>%"></span></span></span>
+  <td class="ns-table__cell ns-table__cell--rank"><%= (match_counter + 1 if local_assigns[:match_counter]) %></td>
+  <th class="ns-table__cell ns-table__cell--ticker"><%= match.symbol %></th>
+  <td class="ns-table__cell">
+    <span class="ns-score"><%= number_with_precision(match.score, precision: 2) %><span class="ns-score__bar"><span class="ns-score__fill" style="--ns-score: <%= (match.score * 100).round %>%"></span></span></span>
   </td>
   <% match.details.each do |detail| %>
-    <td class="num"><%= detail["observed"] %></td>
+    <td class="ns-table__cell ns-table__cell--number"><%= detail["observed"] %></td>
   <% end %>
-  <td class="why"><%= match.why %></td>
+  <td class="ns-table__cell ns-table__cell--why"><%= match.why %></td>
 </tr>

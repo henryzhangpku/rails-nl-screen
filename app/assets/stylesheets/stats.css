@@ -1,0 +1,11 @@
+/* Progress strip: matches, scanned, status, data gaps. */
+.ns-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  border: 1px solid var(--ns-rule); border-radius: 8px; background: var(--ns-surface);
+}
+.ns-stats__item { padding: 0.9rem 1rem; display: grid; gap: 0.3rem; }
+.ns-stats__item + .ns-stats__item { border-left: 1px solid var(--ns-rule); }
+.ns-stats__value { font: 600 1.5rem/1 var(--ns-font-mono); font-variant-numeric: tabular-nums; }
+.ns-stats__value--up { color: var(--ns-up); }
+.ns-stats__value--muted { color: var(--ns-ink-2); }
+.ns-stats__value--error { color: var(--ns-down); }

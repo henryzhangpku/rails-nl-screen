@@ -1,0 +1,43 @@
+/* Shell: top bar, page column, footer, and the static-demo banner. */
+.ns-topbar {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem;
+  padding-block: 0.9rem; padding-left: var(--ns-gutter-left); padding-right: var(--ns-gutter-right);
+  border-bottom: 1px solid var(--ns-rule); background: var(--ns-surface);
+}
+.ns-topbar__brand {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  font: 800 1.05rem/1 var(--ns-font-display); letter-spacing: -0.01em; color: var(--ns-ink); text-decoration: none;
+}
+.ns-topbar__slash { font-style: normal; color: var(--ns-accent); }
+.ns-topbar__meta { font: 500 0.78rem/1.3 var(--ns-font-mono); color: var(--ns-ink-2); letter-spacing: 0.02em; }
+.ns-topbar__repo {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 0.45rem;
+  font: 600 0.82rem/1 var(--ns-font-body); color: var(--ns-accent); text-decoration: none;
+  padding: 0.45rem 0.7rem; border: 1px solid var(--ns-rule); border-radius: 6px;
+}
+.ns-topbar__repo:hover { border-color: var(--ns-accent); }
+
+.ns-page {
+  max-width: 68rem; margin: 0 auto; display: grid; gap: 1.75rem;
+  padding-block: 2rem 4rem; padding-left: var(--ns-gutter-left); padding-right: var(--ns-gutter-right);
+}
+.ns-page > * { min-width: 0; }
+
+.ns-footer {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem 0.6rem;
+  padding-block: 1.5rem 2rem; padding-left: var(--ns-gutter-left); padding-right: var(--ns-gutter-right);
+  border-top: 1px solid var(--ns-rule); color: var(--ns-ink-2); font-size: 0.88rem;
+}
+.ns-footer__link { color: var(--ns-ink); font-weight: 600; text-decoration: none; }
+.ns-footer__link:hover { color: var(--ns-accent); }
+.ns-footer__sep { color: var(--ns-ink-2); }
+
+.ns-banner {
+  display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center;
+  padding: 0.75rem 1rem; border: 1px solid var(--ns-rule); border-radius: 8px; background: var(--ns-surface);
+  font-size: 0.88rem; color: var(--ns-ink-2);
+}
+.ns-banner__badge {
+  font: 600 0.7rem/1 var(--ns-font-mono); letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 0.35rem 0.5rem; border-radius: 4px; background: var(--ns-accent-soft); color: var(--ns-accent);
+}

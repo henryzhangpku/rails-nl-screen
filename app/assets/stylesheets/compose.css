@@ -1,0 +1,26 @@
+/* The query form, its example buttons, and the recent-screens list. */
+.ns-compose { display: grid; gap: 0.9rem; }
+.ns-compose__input {
+  width: 100%; padding: 1rem 1.1rem; font: 500 1rem/1.5 var(--ns-font-mono); color: var(--ns-ink);
+  border: 1px solid var(--ns-rule); border-left: 3px solid var(--ns-accent); border-radius: 6px;
+  background: var(--ns-surface); resize: vertical;
+}
+.ns-compose__submit {
+  justify-self: start; padding: 0.7rem 1.4rem; font: 700 0.95rem/1 var(--ns-font-display);
+  border: 0; border-radius: 6px; background: var(--ns-accent); color: var(--ns-surface); cursor: pointer;
+}
+.ns-compose__error { color: var(--ns-down); }
+
+.ns-examples { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.ns-examples__item {
+  font: 500 0.78rem/1.35 var(--ns-font-mono); text-align: left; padding: 0.5rem 0.65rem;
+  border: 1px dashed var(--ns-rule); border-radius: 6px; background: var(--ns-surface); color: var(--ns-ink-2); cursor: pointer;
+}
+.ns-examples__item:hover { color: var(--ns-ink); border-color: var(--ns-accent); }
+
+.ns-recent { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4rem; }
+.ns-recent__item {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem;
+  padding: 0.6rem 0.8rem; border: 1px solid var(--ns-rule); border-radius: 6px; background: var(--ns-surface);
+}
+.ns-recent__link { font-family: var(--ns-font-mono); font-size: 0.85rem; overflow-wrap: anywhere; }

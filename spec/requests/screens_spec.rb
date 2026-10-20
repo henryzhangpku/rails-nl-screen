@@ -18,7 +18,7 @@ RSpec.describe "Screens", type: :request do
       follow_redirect!
       page = Nokogiri::HTML(response.body)
       expect(page.at("h1").text).to eq "Here's what I understood"
-      expect(page.css(".chip").map(&:text)).to eq [ "RSI(14) below 30", "Price above SMA(200)" ]
+      expect(page.css(".ns-chip").map(&:text)).to eq [ "RSI(14) below 30", "Price above SMA(200)" ]
     end
 
     it "re-renders the form when nothing was understood" do

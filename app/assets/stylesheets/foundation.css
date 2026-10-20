@@ -1,0 +1,55 @@
+/* Foundation: tokens, element defaults, and two tiny layout/text blocks. */
+:root {
+  --ns-paper: #f4f6f8;
+  --ns-surface: #ffffff;
+  --ns-ink: #101828;
+  --ns-ink-2: #475467;
+  --ns-rule: #dde2e9;
+  --ns-accent: #2b4acb;
+  --ns-accent-soft: #e8edff;
+  --ns-up: #067647;
+  --ns-up-soft: #e3f4ec;
+  --ns-down: #b42318;
+
+  --ns-font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --ns-font-body: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+  --ns-font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --ns-gutter-left: max(16px, env(safe-area-inset-left, 0px));
+  --ns-gutter-right: max(16px, env(safe-area-inset-right, 0px));
+
+  color-scheme: light;
+}
+
+/* Dark palette: follows the OS unless light is chosen explicitly; also applies when dark is chosen. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ns-paper: #0d1117; --ns-surface: #151b24; --ns-ink: #e8ecf2; --ns-ink-2: #98a2b3; --ns-rule: #273041;
+    --ns-accent: #8ea6ff; --ns-accent-soft: #1c2647; --ns-up: #47cd89; --ns-up-soft: #12301f; --ns-down: #f97066;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ns-paper: #0d1117; --ns-surface: #151b24; --ns-ink: #e8ecf2; --ns-ink-2: #98a2b3; --ns-rule: #273041;
+  --ns-accent: #8ea6ff; --ns-accent-soft: #1c2647; --ns-up: #47cd89; --ns-up-soft: #12301f; --ns-down: #f97066;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ns-paper); color: var(--ns-ink); font: 15px/1.55 var(--ns-font-body); }
+a { color: var(--ns-accent); text-underline-offset: 3px; }
+code, pre { font-family: var(--ns-font-mono); }
+:focus-visible { outline: 2px solid var(--ns-accent); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--ns-font-display); text-wrap: balance; margin: 0; letter-spacing: -0.015em; }
+h1 { font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.3rem); line-height: 1.12; font-weight: 800; }
+h2 { font-size: 1.15rem; font-weight: 700; }
+progress { width: 100%; height: 6px; accent-color: var(--ns-accent); }
+
+/* ns-stack: a vertical group with consistent spacing */
+.ns-stack { display: grid; gap: 0.6rem; }
+
+/* ns-text: the few text treatments used across components */
+.ns-text--muted { color: var(--ns-ink-2); }
+.ns-text--lede { color: var(--ns-ink-2); max-width: 62ch; margin: 0; }
+.ns-text--eyebrow { font: 600 0.72rem/1 var(--ns-font-mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--ns-ink-2); }
+.ns-text--error { color: var(--ns-down); }

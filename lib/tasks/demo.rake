@@ -55,16 +55,18 @@ namespace :demo do
     end
 
     assigns = { built_on: Date.current, data_source: data_source, site_url: SITE_URL }
-    render = lambda do |template, extra|
-      html = ApplicationController.render(template: template, layout: "demo", assigns: assigns.merge(extra))
-      html.gsub(/<!-- (BEGIN|END) app\/views.*?-->\n?/m, "") # development's view-filename annotations
+    # Development wraps every partial in <!-- BEGIN/END app/views/... --> comments; strip them
+    # (inside a <style> tag they would also break the CSS).
+    render = lambda do |template, extra, layout: "demo"|
+      ApplicationController.render(template: template, layout: layout, assigns: assigns.merge(extra))
+                           .gsub(/<!-- (BEGIN|END) app\/views.*?-->\n?/m, "")
     end
 
-    File.write(out.join("index.html"), render.("demo/index", screens: screens, page_path: ""))
+    File.write(out.join("index.html"), render.("demo/index", { screens: screens, page_path: "" }))
     screens.each_with_index do |screen, i|
-      File.write(out.join("screen-#{i + 1}.html"), render.("demo/screen", screen: screen, page_path: "screen-#{i + 1}.html"))
+      File.write(out.join("screen-#{i + 1}.html"), render.("demo/screen", { screen: screen, page_path: "screen-#{i + 1}.html" }))
     end
-    write_preview_image(out, ApplicationController.render(template: "demo/og", layout: false, assigns: assigns.merge(screens: screens)))
+    write_preview_image(out, render.("demo/og", { screens: screens }, layout: false))
     screens.each(&:destroy) # don't leave demo runs in your "Recent screens"
     puts "Wrote #{screens.size + 1} pages to #{out}"
   end

@@ -1,0 +1,20 @@
+/* Ranked results table and the per-row score bar. */
+.ns-table-wrap { overflow-x: auto; border: 1px solid var(--ns-rule); border-radius: 8px; background: var(--ns-surface); }
+.ns-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+.ns-table__head,
+.ns-table__cell { padding: 0.65rem 0.8rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--ns-rule); white-space: nowrap; }
+.ns-table__head {
+  font: 600 0.7rem/1.2 var(--ns-font-mono); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ns-ink-2); background: var(--ns-paper); white-space: normal;
+}
+.ns-table__head--condition { min-width: 8rem; }
+.ns-table__body > tr:last-child > * { border-bottom: 0; }
+.ns-table__body:empty::after { content: "No matches yet."; display: block; padding: 1rem; color: var(--ns-ink-2); }
+.ns-table__cell--rank { color: var(--ns-ink-2); font-family: var(--ns-font-mono); width: 2.5rem; }
+.ns-table__cell--ticker { font: 700 0.95rem/1.2 var(--ns-font-display); letter-spacing: 0.01em; }
+.ns-table__cell--number { font-family: var(--ns-font-mono); }
+.ns-table__cell--why { white-space: normal; min-width: 18rem; color: var(--ns-ink-2); }
+
+.ns-score { display: grid; gap: 0.3rem; min-width: 5rem; font-family: var(--ns-font-mono); }
+.ns-score__bar { height: 4px; border-radius: 2px; background: var(--ns-rule); overflow: hidden; }
+.ns-score__fill { display: block; height: 100%; width: var(--ns-score); background: var(--ns-up); }

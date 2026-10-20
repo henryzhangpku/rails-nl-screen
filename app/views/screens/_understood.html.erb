@@ -1,21 +1,21 @@
-<section class="stack">
+<section class="ns-stack">
   <h1>Here's what I understood</h1>
-  <div class="prompt"><%= screen.query %></div>
-  <ul class="chips">
+  <div class="ns-prompt"><%= screen.query %></div>
+  <ul class="ns-chips">
     <% screen.conditions.each do |condition| %>
-      <li class="chip"><%= condition.label.delete_suffix(" (weekly)") %><% if condition.timeframe == "weekly" %><span class="tf">weekly</span><% end %></li>
+      <li class="ns-chip"><%= condition.label.delete_suffix(" (weekly)") %><% if condition.timeframe == "weekly" %><span class="ns-chip__timeframe">weekly</span><% end %></li>
     <% end %>
   </ul>
   <% notes = screen.notes.grep_v(/\ANo data/) %>
   <% if notes.any? %>
-    <ul class="notes">
+    <ul class="ns-notes">
       <% notes.each do |note| %><li><%= note %></li><% end %>
     </ul>
   <% end %>
   <% if screen.proposal.present? %>
-    <details class="audit">
-      <summary>Parsed by <%= screen.parser %>; raw proposal before validation</summary>
-      <pre><%= JSON.pretty_generate(screen.proposal) %></pre>
+    <details class="ns-audit">
+      <summary class="ns-audit__summary">Parsed by <%= screen.parser %>; raw proposal before validation</summary>
+      <pre class="ns-audit__json"><%= JSON.pretty_generate(screen.proposal) %></pre>
     </details>
   <% end %>
 </section>

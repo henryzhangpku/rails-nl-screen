@@ -1,22 +1,22 @@
-<section class="stack">
+<section class="ns-stack">
   <div>
     <h2>Ranked results</h2>
-    <p class="muted">Score = how far past each threshold, averaged (0 to 1). A fresher MACD cross scores higher.</p>
+    <p class="ns-text--muted">Score = how far past each threshold, averaged (0 to 1). A fresher MACD cross scores higher.</p>
   </div>
-  <div class="table-wrap">
-    <table class="results">
+  <div class="ns-table-wrap">
+    <table class="ns-table">
       <thead>
         <tr>
-          <th>#</th>
-          <th>Ticker</th>
-          <th>Score</th>
+          <th class="ns-table__head">#</th>
+          <th class="ns-table__head">Ticker</th>
+          <th class="ns-table__head">Score</th>
           <% screen.conditions.each do |condition| %>
-            <th class="cond"><%= condition.label %></th>
+            <th class="ns-table__head ns-table__head--condition"><%= condition.label %></th>
           <% end %>
-          <th>Why it matched</th>
+          <th class="ns-table__head">Why it matched</th>
         </tr>
       </thead>
-      <tbody id="matches"><%= render partial: "matches/match", collection: screen.matches, as: :match %></tbody>
+      <tbody id="matches" class="ns-table__body"><%= render partial: "matches/match", collection: screen.matches, as: :match %></tbody>
     </table>
   </div>
 </section>

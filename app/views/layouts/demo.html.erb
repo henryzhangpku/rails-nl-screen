@@ -20,19 +20,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Public+Sans:wght@400;600&display=swap">
-    <%# A static file has no asset server, so the stylesheet is inlined. %>
-    <style><%= Rails.root.join("app/assets/stylesheets/application.css").read.html_safe %></style>
+    <%# A static file has no asset server, so every stylesheet is inlined (foundation first, for the tokens). %>
+    <style><%= render "shared/inline_styles" %></style>
   </head>
 
   <body>
-    <header class="topbar">
-      <a class="brand" href="index.html"><img src="data:image/svg+xml,<%= ERB::Util.url_encode(Rails.root.join("public/icon.svg").read.strip) %>" alt="" width="22" height="22"><span>NL<i class="slash">/</i>Screen</span></a>
-      <span class="meta">snapshot · <%= @built_on.to_fs(:long) %> close · 100 large US stocks</span>
+    <header class="ns-topbar">
+      <a class="ns-topbar__brand" href="index.html"><img src="data:image/svg+xml,<%= ERB::Util.url_encode(Rails.root.join("public/icon.svg").read.strip) %>" alt="" width="22" height="22"><span>NL<i class="ns-topbar__slash">/</i>Screen</span></a>
+      <span class="ns-topbar__meta">snapshot · <%= @built_on.to_fs(:long) %> close · 100 large US stocks</span>
       <%= render "shared/repo_link" %>
     </header>
-    <main>
-      <div class="banner">
-        <span class="badge">Static demo</span>
+    <main class="ns-page">
+      <div class="ns-banner">
+        <span class="ns-banner__badge">Static demo</span>
         <span>Output of the Rails app for five example screens, on <%= @data_source %>. The live app streams results as they're found; run it with <code>bin/dev</code>.</span>
       </div>
       <%= yield %>

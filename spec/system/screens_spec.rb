@@ -17,9 +17,9 @@ RSpec.describe "Running a screen", type: :system do
     click_on "Run screen"
 
     expect(page).to have_text("Here's what I understood", wait: 60) # the inline job scans all 100 symbols first
-    expect(page).to have_css(".chip", text: "Drawdown from 52-week high below 5%")
-    expect(page).to have_css(".chip", text: "Price above EMA(50)")
-    expect(page).to have_css(".chip", text: "Volume above 1.5x its 20-bar average")
+    expect(page).to have_css(".ns-chip", text: "Drawdown from 52-week high below 5%")
+    expect(page).to have_css(".ns-chip", text: "Price above EMA(50)")
+    expect(page).to have_css(".ns-chip", text: "Volume above 1.5x its 20-bar average")
     expect(page).to have_css("#progress", text: "Done")
 
     Screen.last.matches.each do |match|

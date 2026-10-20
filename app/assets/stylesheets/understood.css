@@ -1,0 +1,24 @@
+/* "Here's what I understood": the query as a prompt, conditions as chips, notes, audit trail. */
+.ns-prompt {
+  font: 500 1.05rem/1.5 var(--ns-font-mono); color: var(--ns-ink);
+  padding: 1rem 1.1rem; border: 1px solid var(--ns-rule); border-left: 3px solid var(--ns-accent);
+  border-radius: 6px; background: var(--ns-surface); overflow-wrap: anywhere;
+}
+.ns-prompt::before { content: "› "; color: var(--ns-accent); }
+
+.ns-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0; margin: 0; list-style: none; }
+.ns-chip {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font: 500 0.82rem/1 var(--ns-font-mono); padding: 0.5rem 0.65rem; border-radius: 999px;
+  background: var(--ns-accent-soft); color: var(--ns-accent);
+}
+.ns-chip__timeframe { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.75; }
+
+.ns-notes { margin: 0; padding-left: 1.1rem; color: var(--ns-ink-2); font-size: 0.88rem; }
+
+.ns-audit { font-size: 0.85rem; color: var(--ns-ink-2); }
+.ns-audit__summary { cursor: pointer; }
+.ns-audit__json {
+  margin: 0.5rem 0 0; padding: 0.75rem; font-size: 0.78rem; overflow-x: auto;
+  background: var(--ns-surface); border: 1px solid var(--ns-rule); border-radius: 6px;
+}

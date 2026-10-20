@@ -18,12 +18,12 @@
   </head>
 
   <body>
-    <header class="topbar">
-      <%= link_to root_path, class: "brand" do %><img src="/icon.svg" alt="" width="22" height="22"><span>NL<i class="slash">/</i>Screen</span><% end %>
-      <span class="meta">plain-English stock screens · Rails 8 + Hotwire</span>
+    <header class="ns-topbar">
+      <%= link_to root_path, class: "ns-topbar__brand" do %><img src="/icon.svg" alt="" width="22" height="22"><span>NL<i class="ns-topbar__slash">/</i>Screen</span><% end %>
+      <span class="ns-topbar__meta">plain-English stock screens · Rails 8 + Hotwire</span>
       <%= render "shared/repo_link" %>
     </header>
-    <main>
+    <main class="ns-page">
       <%= yield %>
     </main>
     <%= render "shared/footer" %>

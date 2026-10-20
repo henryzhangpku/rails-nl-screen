@@ -1,36 +1,36 @@
 <% content_for :title, "NL Screen" %>
 
-<section class="stack">
-  <span class="eyebrow">Plain English in, ranked stocks out</span>
+<section class="ns-stack">
+  <span class="ns-text--eyebrow">Plain English in, ranked stocks out</span>
   <h1>Type a stock screen the way you'd say it.</h1>
-  <p class="lede">I'll show you exactly how I read it, then scan 100 large US stocks and stream matches in as they're found.</p>
+  <p class="ns-text--lede">I'll show you exactly how I read it, then scan 100 large US stocks and stream matches in as they're found.</p>
 </section>
 
-<%= form_with model: @screen, class: "compose", data: { controller: "examples" } do |form| %>
+<%= form_with model: @screen, class: "ns-compose", data: { controller: "examples" } do |form| %>
   <% if @screen.errors.any? %>
-    <div class="error"><%= @screen.errors.full_messages.to_sentence %></div>
+    <div class="ns-compose__error"><%= @screen.errors.full_messages.to_sentence %></div>
   <% end %>
 
-  <%= form.text_area :query, rows: 3, autofocus: true, data: { examples_target: "input" },
+  <%= form.text_area :query, rows: 3, autofocus: true, class: "ns-compose__input", data: { examples_target: "input" },
         placeholder: "RSI(14) under 30 on the daily, MACD crossing up, volume above its 20-day average, price above the 200-day moving average" %>
-  <%= form.submit "Run screen", class: "button" %>
+  <%= form.submit "Run screen", class: "ns-compose__submit" %>
 
-  <div class="stack">
-    <span class="eyebrow">Try one</span>
-    <div class="examples">
+  <div class="ns-stack">
+    <span class="ns-text--eyebrow">Try one</span>
+    <div class="ns-examples">
       <% Screen::EXAMPLES.each do |example| %>
-        <button type="button" data-action="examples#fill" data-examples-query-param="<%= example %>"><%= example %></button>
+        <button type="button" class="ns-examples__item" data-action="examples#fill" data-examples-query-param="<%= example %>"><%= example %></button>
       <% end %>
     </div>
   </div>
 <% end %>
 
 <% if @recent.any? %>
-  <section class="stack">
+  <section class="ns-stack">
     <h2>Recent screens</h2>
-    <ul class="recent">
+    <ul class="ns-recent">
       <% @recent.each do |screen| %>
-        <li><%= link_to screen.query, screen %> <span class="muted"><%= pluralize(screen.matches.size, "match") %></span></li>
+        <li class="ns-recent__item"><%= link_to screen.query, screen, class: "ns-recent__link" %> <span class="ns-text--muted"><%= pluralize(screen.matches.size, "match") %></span></li>
       <% end %>
     </ul>
   </section>
