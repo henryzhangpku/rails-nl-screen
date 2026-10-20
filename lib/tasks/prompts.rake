@@ -3,7 +3,7 @@ namespace :prompts do
   task eval: :environment do
     abort "Set ANTHROPIC_API_KEY: the evals call Claude." unless ScreenParser::Claude.enabled?
 
-    prompt = PromptEngine::Prompt.find_by!(name: ScreenParser::Claude::PROMPT_NAME)
+    prompt = PromptEngine::Prompt.find_by!(slug: ScreenParser::Claude::PROMPT_NAME)
     version = ENV["VERSION"] ? prompt.versions.find_by!(version_number: ENV["VERSION"]) : prompt.current_version
     eval_run = PromptEval.new(PromptEval.load_set(prompt), version: version).run
 

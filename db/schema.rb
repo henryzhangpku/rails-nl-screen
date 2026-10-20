@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_20_042905) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_20_053644) do
   create_table "bars", force: :cascade do |t|
     t.string "symbol", null: false
     t.date "date", null: false
@@ -71,11 +71,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_20_042905) do
     t.integer "passed_count", default: 0
     t.integer "failed_count", default: 0
     t.text "error_message"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
     t.string "openai_run_id"
     t.string "openai_file_id"
     t.string "report_url"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["eval_set_id"], name: "index_prompt_engine_eval_runs_on_eval_set_id"
     t.index ["openai_run_id"], name: "index_prompt_engine_eval_runs_on_openai_run_id"
     t.index ["prompt_version_id"], name: "index_prompt_engine_eval_runs_on_prompt_version_id"
@@ -85,11 +85,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_20_042905) do
     t.string "name", null: false
     t.text "description"
     t.integer "prompt_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
     t.string "openai_eval_id"
     t.string "grader_type", default: "exact_match", null: false
-    t.json "grader_config", default: {}
+    t.json "grader_config"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["grader_type"], name: "index_prompt_engine_eval_sets_on_grader_type"
     t.index ["openai_eval_id"], name: "index_prompt_engine_eval_sets_on_openai_eval_id"
     t.index ["prompt_id", "name"], name: "index_prompt_engine_eval_sets_on_prompt_id_and_name", unique: true
@@ -128,7 +128,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_20_042905) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_prompt_engine_playground_run_results_on_created_at"
-    t.index ["prompt_version_id"], name: "index_prompt_engine_playground_run_results_on_prompt_version_id"
+    t.index ["prompt_version_id"], name: "idx_on_prompt_version_id_747dcd550d"
     t.index ["provider"], name: "index_prompt_engine_playground_run_results_on_provider"
   end
 
@@ -160,22 +160,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_20_042905) do
     t.integer "max_tokens"
     t.string "status"
     t.json "metadata"
+    t.integer "versions_count", default: 0, null: false
+    t.string "slug"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.integer "versions_count", default: 0, null: false
+    t.index ["slug"], name: "index_prompt_engine_prompts_on_slug", unique: true
   end
 
   create_table "prompt_engine_settings", force: :cascade do |t|
     t.text "openai_api_key"
     t.text "anthropic_api_key"
-    t.json "preferences", default: {}
+    t.json "preferences"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
   end
 
   create_table "prompt_engine_test_cases", force: :cascade do |t|
     t.integer "eval_set_id", null: false
-    t.json "input_variables", default: {}, null: false
+    t.json "input_variables", null: false
     t.text "expected_output", null: false
     t.text "description"
     t.datetime "created_at", null: false

@@ -69,8 +69,9 @@ gem "ruby_llm", "~> 2.1"
 
 gem "kaminari", "~> 1.2"
 
-# Prompts as versioned data, with an admin UI mounted at /prompts.
-gem "prompt_engine", "~> 1.0"
+# Prompts as versioned data, with an admin UI mounted at /prompts. Runs on a fork of the
+# engine's main branch with three fixes (docs/ARCHITECTURE.md, "Running on a fork").
+gem "prompt_engine", github: "henryzhangpku/prompt_engine", branch: "nl-screen"
 
 group :development do
   gem "annotaterb", "~> 4.25"         # schema comments at the top of each model, refreshed after db:migrate

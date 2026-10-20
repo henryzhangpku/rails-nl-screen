@@ -2,7 +2,8 @@
 
 # The Claude screen parser's prompt, as a PromptEngine record. Editing it at /prompts
 # creates a new numbered version; screens record which version parsed them.
-prompt = PromptEngine::Prompt.find_or_create_by!(name: ScreenParser::Claude::PROMPT_NAME) do |prompt|
+prompt = PromptEngine::Prompt.find_or_create_by!(slug: ScreenParser::Claude::PROMPT_NAME) do |prompt|
+  prompt.name = ScreenParser::Claude::PROMPT_NAME
   prompt.description = "Turns a plain-English stock screen into whitelisted, typed conditions (JSON schema enforced in code)."
   prompt.system_message = ScreenParser::Claude::SYSTEM_PROMPT
   prompt.content = "{{query}}"

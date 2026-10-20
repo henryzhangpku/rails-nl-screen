@@ -41,7 +41,7 @@ module ScreenParser::Claude
     Put any part of the request you cannot express with these into `unrecognized`, verbatim. Never invent conditions.
   PROMPT
 
-  # The prompt is data: PromptEngine stores it in the "screen-parser" record and keeps
+  # The prompt is data: PromptEngine stores it in the record with slug "screen-parser" and keeps
   # every edit as a numbered version (edit it at /prompts once signed in). If that
   # record doesn't exist or isn't active, the prompt above is used as written.
   PROMPT_NAME = "screen-parser"
@@ -56,7 +56,7 @@ module ScreenParser::Claude
   # Pass a PromptEngine::PromptVersion to use that version instead of the active one
   # (that's how PromptEval compares versions).
   def self.request_for(text, version: nil)
-    version ||= PromptEngine::Prompt.active.find_by(name: PROMPT_NAME)&.current_version
+    version ||= PromptEngine::Prompt.active.find_by(slug: PROMPT_NAME)&.current_version
     return fallback_request(text) unless version
 
     model = version.model.presence || MODEL
