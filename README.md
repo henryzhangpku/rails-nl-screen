@@ -8,19 +8,24 @@ A learning project: a plain-English stock screen in Rails 8 + Hotwire.
 
 Type something like
 
-> RSI(14) under 30 on the daily, MACD crossing up, volume above its 20-day average, price above the 200-day moving average
+> RSI under 30 on the daily, MACD crossing above its signal on the weekly, volume above its 20-day average
 
 and the app:
 
-1. **parses** it into a typed, whitelisted screen (`Condition` rows: indicator, timeframe, operator, period, value),
-2. **shows you what it understood** before any results,
+1. **parses** it into a screen spec: whitelisted conditions such as `rsi14 < 30`, `macd_cross_up_w == true`,
+   `close > sma200`. The spec is the **same contract as [EquityScout](https://github.com/henryzhangpku/equity-scout)**,
+   the Python version of this product: same field names, units, operators, validation messages and wording
+   (see [Same product, two stacks](#same-product-two-stacks)),
+2. **shows you what it understood** before any results, and lists anything it **won't screen, with the reason**
+   (an EMA, revenue growth...), never approximated,
 3. **runs it in a background job** over ~100 large US tickers using free daily prices (Yahoo's chart API), cached in SQLite,
-4. **streams each match into the results table live** (Turbo Streams), with the value of every condition and a one-line "why it matched".
-5. **ranks the survivors**: each passing condition scores how far past its threshold the stock is (0 to 1; for a MACD cross, how recent it was), and matches are sorted by the average.
+4. **walks every stock through a funnel** (how many passed, failed, or had no data at each step) and **streams each
+   match into the results table live** (Turbo Streams), with the values it used and a one-line "why it matched",
+5. **ranks the survivors** as EquityScout does: a weighted mean of percentile ranks on the spec's ranking fields.
 6. **keeps a searchable history** at `/screens`: search as you type, filter, sort and paginate inside a Turbo Frame, delete with a toast.
 7. **treats the LLM prompt as data**: it lives in [PromptEngine](https://github.com/aviflombaum/prompt_engine), Avi Flombaum's mountable engine, at `/prompts`, where each edit becomes a numbered version and every screen records which version parsed it, and `bin/rails prompts:eval` scores a version against a set of example screens. The editor sits behind Rails 8's generated sign-in. The app runs the engine from [Henry's fork](https://github.com/henryzhangpku/prompt_engine), whose only changes are three fixes offered upstream ([details](docs/ARCHITECTURE.md#running-on-a-fork-three-fixes-to-promptengine)).
 
-No React, no Node build, no paid data. Optional: with an API key, an LLM *proposes* the typed screen as JSON (DeepSeek `deepseek-v4-flash` by default; any provider [RubyLLM](https://rubyllm.com) supports works), and the same whitelist validations decide what is kept. The model proposes; code decides. Without a key, the deterministic rule-based parser does everything.
+No React, no Node build, no paid data. Optional: with an API key, an LLM *proposes* the screen spec as JSON (DeepSeek `deepseek-v4-flash` by default; any provider [RubyLLM](https://rubyllm.com) supports works), and the same contract decides what is kept. The model proposes; code decides. Without a key, the deterministic rule-based parser does everything.
 
 ## Demo
 
@@ -68,7 +73,7 @@ source, now puts a JavaScript bot check in front of its CSV downloads, so it was
 Tests:
 
 ```sh
-bundle exec rspec --exclude-pattern "spec/system/**/*_spec.rb"   # models, parser, indicators, requests
+bundle exec rspec --exclude-pattern "spec/system/**/*_spec.rb"   # models, parser, indicators (incl. parity with EquityScout), requests
 bundle exec rspec spec/system   # happy path in headless Chrome (synthetic data, job run inline)
 bin/rubocop && bin/brakeman
 ```
@@ -77,29 +82,34 @@ Edit the universe in `db/universe.txt`.
 
 ## What it understands
 
+The rule-based parser, as screen-spec conditions (ratios are decimals: `-0.20` is 20%):
+
 | You type | Becomes |
 |---|---|
-| `RSI(14) under 30`, `rsi > 70`, `oversold`, `overbought` | `rsi` below/above value |
-| `MACD crossing up` / `MACD bearish cross` | `macd` crosses_up/crosses_down (within the last 3 bars) |
-| `price above the 200-day moving average`, `below the 21 day EMA`, `above SMA(50)` | `sma`/`ema` above/below |
-| `volume above its 20-day average`, `volume 2x its 50-day average` | `volume` above/below N x average |
-| `within 5% of the 52-week high`, `down at least 25% from the 52-week high` | `drawdown` below/above % |
-| `price between $20 and $100`, `trading under $50` | `price` above/below |
-| `weekly RSI above 60` | any of the above on weekly bars |
+| `RSI under 30`, `rsi > 70`, `oversold`, `weekly RSI above 60` | `rsi14 < 30`, `rsi14 > 70`, `rsi14 < 30`, `rsi14_w > 60` |
+| `MACD crossing up`, `MACD crossing above its signal on the weekly`, `MACD above its signal` | `macd_cross_up == true` (on the last session), `macd_cross_up_w == true`, `macd_hist > 0` |
+| `price above the 200-day moving average`, `below SMA(50)`, `golden cross` | `close > sma200`, `close < sma50`, `sma50_above_sma200 == true` |
+| `volume above its 20-day average`, `volume 2x its 50-day average` | `volume_ratio_20d > 1`, `volume_ratio_50d > 2` |
+| `within 5% of the 52-week high`, `down at least 25% from the 52-week high` | `drawdown_52w >= -0.05`, `drawdown_52w <= -0.25` |
+| `price between $20 and $100`, `trading under $50` | `close between [20, 100]`, `close < 50` |
+| `up over the last 3 months`, `6-month return above 10%` | `mom_3m > 0`, `mom_6m > 0.1` |
 
-Anything it can't map is shown back as "Didn't understand ...", never silently guessed.
+Not screened, with the reason: an EMA, a MACD cross down, an RSI other than 14, a weekly moving average (the contract
+has no field for them), and fields this demo doesn't compute because it only loads prices: revenue, margins, market
+cap, short interest, returns vs a benchmark. With an API key, the LLM can propose any of the contract's 105 fields
+and ranking; the same rules decide.
 
 ## Architecture in 10 lines
 
 1. `ScreensController#create` calls `Screen.from_query(text)` and redirects to the screen's page.
-2. `ScreenParser` (regex rules) or `ScreenParser::LLM` (JSON from any RubyLLM provider, prompt from PromptEngine) proposes condition attributes.
-3. `Condition::SPECS` is the whitelist; Condition validations drop anything that doesn't fit.
+2. `ScreenParser` (regex rules) or `ScreenParser::LLM` (JSON from any RubyLLM provider, prompt from PromptEngine) proposes a screen spec.
+3. `ScreenSpec` is the contract (EquityScout's): `Screen#adopt` keeps what passes it and lists the rest as not screened.
 4. The show page renders "Here's what I understood" and subscribes with `turbo_stream_from @screen`.
 5. `RunScreenJob` (Solid Queue) calls `Screen#run`, which walks `Universe.symbols`.
 6. `Bar.series_for(symbol)` returns cached bars, fetching via `MarketData::Yahoo` at most daily (marker in Solid Cache).
-7. `PriceSeries` holds the bars (and resamples to weekly); `Indicators` is pure Ruby math over arrays.
-8. `Condition#evaluate(series)` returns `passed`, the observed value, and a short reason.
-9. When all conditions pass, a scored `Match` is created; its `after_create_commit` appends a table row via Turbo Streams (over Solid Cable).
+7. `Features.for(series)` computes every field from the bars (`Indicators` is the math; numbers match EquityScout's).
+8. Each funnel step is `ScreenSpec.check`: pass, fail, or missing data; the symbol stops at the first that isn't a pass.
+9. A survivor becomes a `Match` (its `after_create_commit` appends a row via Turbo Streams, over Solid Cable); when the run ends, matches are ranked.
 10. Progress changes on `Screen` broadcast a Turbo 8 page refresh, so the status line is always current.
 
 ## What's new in Rails 8 vs 2007-era Rails (a map for Henry)
@@ -129,7 +139,7 @@ look in this repo.
 | `config/database.yml` passwords, `secrets.yml` | **Encrypted credentials** (`config/credentials.yml.enc` + a key you never commit) | Not used here (no secrets). `bin/rails credentials:edit` creates both files; `config/master.key` is gitignored. API keys are plain env vars. |
 | Capistrano to a hand-built server | **Kamal** (Docker deploys to any host, zero-downtime) + **Thruster** (HTTP/2, caching proxy in front of Puma) | `config/deploy.yml`, `.kamal/`, `Dockerfile` |
 | Test::Unit, fixtures only | Minitest is still the default; this app uses **RSpec** (rspec-rails): model, request and **system specs** in a real browser | `spec/models/*`, `spec/requests/*`, `spec/system/screens_spec.rb` |
-| — | Ruby 3 niceties used here: `Data.define` value objects, endless methods (`def spec = SPECS[indicator]`) | `Condition::Evaluation`, `PriceSeries::Point`, `ScreenParser::Result` |
+| — | Ruby 3 niceties used here: `Data.define` value objects, endless methods (`def label = ScreenSpec.describe(to_spec)`) | `ScreenSpec::Field`, `PriceSeries::Point`, `ScreenParser::Result` |
 | — | Built-in health check, Brakeman, RuboCop (omakase style), GitHub Actions CI | `/up` route, `.github/workflows/ci.yml` |
 | `acts_as_authenticated` / restful_authentication plugins | **`bin/rails generate authentication`**: sessions, `has_secure_password`, a `Current` model and built-in `rate_limit`, generated as your own code | `app/controllers/concerns/authentication.rb`, `config/routes.rb` (route constraint guarding `/prompts`), `config/initializers/prompt_engine.rb` (the engine's own controllers require it too) |
 | Engines (Rails 2.3, still rough) | **Mountable engines** with isolated namespaces, migrations and assets | `mount PromptEngine::Engine => "/prompts"` |
@@ -138,7 +148,25 @@ look in this repo.
 
 Things that did **not** change much: MVC, ActiveRecord, migrations, `resources` routing, ERB, and "convention over
 configuration". Read in this order: `config/routes.rb`, `app/controllers/screens_controller.rb`, `app/models/screen.rb`,
-`app/models/condition.rb`, `app/models/screen_parser.rb`, `app/models/indicators.rb`, then the views.
+`app/models/screen_spec.rb`, `app/models/condition.rb`, `app/models/screen_parser.rb`, `app/models/features.rb`, then the views.
+
+## Same product, two stacks
+
+[EquityScout](https://github.com/henryzhangpku/equity-scout) is this product in Python (pandas, SEC fundamentals,
+backtests, cited explanations). This app is the same product in Rails, sharing its contract rather than its code:
+
+| | EquityScout (Python) | This app (Rails) |
+|---|---|---|
+| The contract | `src/scout/spec.py`: fields, units, operators, `validate()` | `app/models/screen_spec.rb`, a line-by-line port: same 105 fields, same messages |
+| Plain English | `docs/ui.js` `plainCond` | `ScreenSpec.describe`, same wording ("Down at least 20% from 52-week high") |
+| Indicators | `src/scout/indicators.py` (pandas) | `Indicators` + `Features` (plain Ruby); `spec/models/features_spec.rb` checks every value against EquityScout's own output |
+| Funnel and ranking | `screen.py`: in / passed / failed / missing per step; weighted percentile ranks | `Screen#run`: the same funnel and ranking |
+| Not screened | `unmapped: [{text, reason}]` | the same, shown under "Not screened" |
+| Data | ~3,800 stocks, prices + SEC + FINRA | 100 large caps, prices only: other fields are refused with the reason |
+
+Differences, on purpose: ranking ties go to the more liquid name (EquityScout uses market cap, not loaded here); a
+proposed condition that breaks the contract is listed as not screened while the rest runs (EquityScout asks the model
+for one correction, then stops the run).
 
 ## Not done (on purpose)
 

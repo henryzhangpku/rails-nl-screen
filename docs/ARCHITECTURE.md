@@ -6,17 +6,19 @@ with a short "In 2007 / Now" note in each section and exercises at the end.*
 
 ## The app these notes are about
 
-NL Screen turns a plain-English stock screen ("RSI(14) under 30, MACD crossing up, price above the 200-day
-moving average") into typed, whitelisted conditions, runs them over 100 large US stocks on daily prices, and
-streams ranked matches into the page as they're found.
+NL Screen turns a plain-English stock screen ("RSI under 30 on the daily, MACD crossing above its signal on the
+weekly, volume above its 20-day average") into a screen spec, runs it over 100 large US stocks on daily prices
+through a funnel, and streams ranked matches into the page as they're found. The spec is the same contract as
+[EquityScout](https://github.com/henryzhangpku/equity-scout), the Python version of this product: same fields,
+units, wording, funnel and ranking (sections 5 and 15).
 
 It is deliberately a *default* Rails 8 application: one process, SQLite everywhere, no Redis, no Node build,
 no front-end framework. Each section below covers one layer: which Rails piece does the work, where it lives
 in the code, and why it was chosen.
 
 Suggested reading order for the code: `config/routes.rb` → `app/controllers/screens_controller.rb` →
-`app/models/screen.rb` → `app/models/condition.rb` → `app/models/screen_parser.rb` →
-`app/models/indicators.rb` → `app/models/match.rb` → `app/views/screens/show.html.erb`.
+`app/models/screen.rb` → `app/models/screen_spec.rb` → `app/models/condition.rb` → `app/models/screen_parser.rb` →
+`app/models/features.rb` → `app/models/indicators.rb` → `app/models/match.rb` → `app/views/screens/show.html.erb`.
 
 - Live static demo: https://henryzhangpku.github.io/rails-nl-screen/
 - Code: https://github.com/henryzhangpku/rails-nl-screen
@@ -126,13 +128,13 @@ sequenceDiagram
   Q->>J: dequeue and perform
   loop each of 100 symbols
     J->>D: daily bars (only if not fetched today)
-    J->>S: evaluate every condition
-    alt all conditions pass
-      J->>S: Match.create (with score)
+    J->>S: features, then each funnel step: pass / fail / no data
+    alt passes every step
+      J->>S: Match.create (values used, why)
       S->>K: broadcast_append_to screen (row HTML)
       K-->>B: turbo-stream: append the row to the results table
     end
-    J->>S: save progress (at most twice a second)
+    J->>S: save progress and funnel (at most twice a second)
     S->>K: broadcast_refresh_to screen
     K-->>B: turbo-stream refresh
     B->>C: GET /screens/:id (refresh, morph the diff)
@@ -152,32 +154,34 @@ never parses JSON or holds application state.
 ```mermaid
 erDiagram
   SCREENS ||--o{ CONDITIONS : "has_many (ordered by position)"
-  SCREENS ||--o{ MATCHES : "has_many (ranked by score)"
+  SCREENS ||--o{ MATCHES : "has_many (ordered by rank)"
   BARS }o..o{ MATCHES : "looked up by symbol (no FK)"
 
   SCREENS {
     text query
     string source "rules | llm"
-    string parser "e.g. rules v1, or model + prompt fingerprint"
+    string parser "e.g. rules v2, or model + prompt version"
     json proposal "raw proposal before validation (audit)"
+    json spec "the accepted screen spec (EquityScout's contract)"
+    json funnel "in / passed / failed / no data per step"
     string status "enum: pending running done failed"
     integer scanned_count
     integer universe_size
-    json notes "dropped / not understood / data gaps"
+    json notes "data gaps, fallbacks"
   }
   CONDITIONS {
-    string indicator "rsi macd sma ema volume drawdown price"
-    string timeframe "daily | weekly"
-    string operator "above below crosses_up crosses_down"
-    integer period
-    float value
+    string field "rsi14, close, drawdown_52w, ... (whitelisted)"
+    string op "< <= > >= between =="
+    json value "30, -0.2, true or [20, 200]"
+    string ref "or another field: sma200"
     integer position
   }
   MATCHES {
     string symbol
-    json details "observed value per condition"
+    json details "the values of the fields the screen used"
     string why "one-line reason"
-    float score "0..1, used for ranking"
+    float score "0..1: weighted percentile ranks"
+    integer rank "1 = best; set when the run ends"
   }
   BARS {
     string symbol
@@ -192,10 +196,11 @@ erDiagram
 
 Rails features this exercises:
 
-- **Associations with scopes**: `has_many :matches, -> { order(score: :desc, id: :asc) }` makes "ranked" the
-  default everywhere, including in the static demo.
+- **Associations with scopes**: `has_many :matches, -> { order(Match.arel_table[:rank].asc.nulls_last, :id) }`
+  makes "ranked" the default everywhere, including in the static demo (Arel builds the `NULLS LAST`).
 - **`enum :status`** with string values gives `screen.done?`, `screen.running!` and `Screen.failed` for free.
-- **JSON columns** (`notes`, `proposal`, `details`) for small structured blobs that are never queried.
+- **JSON columns** (`spec`, `funnel`, `notes`, `proposal`, `details`, and a condition's `value`, which can be a
+  number, a boolean or a `[low, high]` pair) for small structured data that is never queried.
 - **Constraints in the database, not just the model**: `null: false`, defaults, a unique index on
   `bars (symbol, date)`, which is what makes `upsert_all` idempotent, and one on `matches (screen_id, symbol)`,
   so a screen can't match a symbol twice.
@@ -214,41 +219,57 @@ by file name (`app/models/market_data/yahoo.rb` ⇒ `MarketData::Yahoo`).
 | Object | Kind | Job |
 |---|---|---|
 | `Screen` | Active Record | Owns the query, builds itself from text (`from_query`), runs the scan (`run`), broadcasts progress. |
-| `Condition` | Active Record | One whitelisted rule. `SPECS` is the whitelist; validations enforce it; `evaluate(series)` returns a result. |
-| `Match` | Active Record | A passing symbol with values, reason and score. Broadcasts itself on create. |
+| `ScreenSpec` | Module | The contract shared with EquityScout: 105 fields, operators, validation, plain English, checking and ranking. |
+| `Condition` | Active Record | One rule of the spec (`field / op / value or ref`); validated by `ScreenSpec`. |
+| `Match` | Active Record | A survivor with the values used, why, score and rank. Broadcasts itself on create. |
 | `Bar` | Active Record | Local cache of daily prices. `series_for(symbol)` fetches at most once a day. |
-| `Indicators` | Module of pure functions | SMA, EMA, Wilder RSI, MACD, cross detection, over plain arrays. |
+| `Features` | Module | Every field this demo computes for one symbol, from its daily bars. |
+| `Indicators` | Module of pure functions | SMA, EMA, Wilder RSI, MACD, momentum, volume ratio, drawdown, over plain arrays. |
 | `PriceSeries` | Plain object | Ordered OHLCV points; resamples daily to weekly. |
 | `MarketData::Yahoo` / `::Synthetic` | Modules | Where prices come from (real, or deterministic fake for offline use). |
-| `ScreenParser` / `ScreenParser::LLM` | Modules | Turn text into *proposed* condition attributes. |
+| `ScreenParser` / `ScreenParser::LLM` | Modules | Turn text into a *proposed* screen spec. |
 | `Universe` | Module | Reads the 100 tickers from `db/universe.txt`. |
 
 Modern Ruby used along the way: `Data.define` for small immutable value objects
-(`Condition::Evaluation`, `PriceSeries::Point`, `ScreenParser::Result`) and one-line endless methods
-(`def spec = SPECS[indicator]`).
+(`ScreenSpec::Field`, `PriceSeries::Point`, `ScreenParser::Result`) and one-line endless methods
+(`def label = ScreenSpec.describe(to_spec)`).
 
-### The whitelist is the safety boundary
+### The contract is the safety boundary
 
-`Condition::SPECS` lists every allowed indicator, its operators, its default period, and the valid range of
-its value. A proposed condition becomes a database row only if it passes:
+`ScreenSpec` is EquityScout's screen spec (`src/scout/spec.py` there), ported line by line: the same 105 fields
+(name, group, kind, meaning), operators (`< <= > >= between ==`), units (ratios are decimals) and validation
+messages. A condition is `{field, op, value}` or `{field, op, ref}`:
 
 ```ruby
-validates :indicator, inclusion: { in: SPECS.keys }
-validates :timeframe, inclusion: { in: TIMEFRAMES }
-validate  :fits_spec  # operator allowed? period in 2..250? value in range?
+{ "field" => "rsi14",        "op" => "<",  "value" => 30 }      # Daily RSI (14) under 30
+{ "field" => "close",        "op" => ">",  "ref" => "sma200" }  # Price above its 200-day average
+{ "field" => "drawdown_52w", "op" => "<=", "value" => -0.2 }    # Down at least 20% from 52-week high
 ```
 
-The same `SPECS` hash generates the JSON schema sent to the model, so the model is constrained to the shape the
-code accepts, and anything that still doesn't fit is dropped with a visible note.
+`Screen#adopt` checks every proposed condition with `ScreenSpec.condition_problems` (unknown field, wrong operator for
+a boolean, a ratio that looks like a percent, RSI outside 0-100...). What passes becomes a `Condition`; what doesn't is
+listed under **not screened**, with the reason. Fields this demo can't compute (it only loads prices, so no revenue,
+margins, market cap or short interest) are refused the same way, as EquityScout refuses short interest when it has
+no data. Nothing is dropped silently, and nothing is approximated: there is no EMA field, so "above the 21-day EMA"
+is reported, not turned into a 20-day SMA.
 
-### Evaluation and ranking
+The same field list generates the JSON schema and the prompt sent to the model, so the model can only name
+whitelisted fields, and `ScreenSpec` still checks every value it sends.
 
-`Condition#evaluate(series)` returns `Evaluation(passed, observed, reason, strength)`:
+### The funnel, and ranking
 
-- **observed**: the number shown in the table ("RSI(14) 27.3", "1.8x avg").
-- **reason**: the phrase used in "why it matched".
-- **strength**: how far past the threshold, as a fraction of it, capped at 1 (for a MACD cross, how recent it
-  is within the 3-bar lookback). A match's `score` is the average strength; results are ordered by it.
+`Features.for(series)` computes every available field for one symbol (the same numbers as EquityScout's
+`snapshot()`; `spec/models/features_spec.rb` holds a fixture from EquityScout's own Python and compares every value).
+`Screen#run` then walks each symbol through the steps in order, as EquityScout's `run_screen` does:
+
+- `ScreenSpec.check(condition, features)` is `:pass`, `:fail` or `:missing` (no value: too little history for a
+  200-day average, say). Missing data is a gap, reported in its own column, never imputed.
+- The funnel records, per step, how many names entered, passed, failed and were missing, with EquityScout's
+  invariants: in = passed + failed + missing, and each step's in is the previous step's passed.
+- A symbol that passes every step becomes a `Match`, streamed to the page as it's found.
+- When the run ends, matches are ranked like EquityScout's `rank()`: each ranking field's percentile rank among the
+  matches (pandas' `rank(pct=True)`, ties averaged, missing = 0), weighted, averaged. Ties go to the more liquid name.
+  Without a ranking in the proposal, `ScreenSpec.default_rank` ranks by each threshold's field in its direction.
 
 ---
 
@@ -261,22 +282,24 @@ flowchart TD
   T["Plain-English query"] --> E{"Key set for the<br/>model's provider?"}
   E -- no --> R["ScreenParser (regex rules)<br/>deterministic, offline"]
   E -- yes --> P["Prompt from PromptEngine<br/>(active 'screen-parser' record,<br/>else the prompt in code)"]
-  P --> L["ScreenParser::LLM<br/>any RubyLLM provider<br/>schema built from Condition::SPECS"]
+  P --> L["ScreenParser::LLM<br/>any RubyLLM provider<br/>schema built from ScreenSpec"]
   L -- "API / network error,<br/>unusable reply" --> R
-  L --> PR["Proposal: conditions + unrecognized"]
+  L --> PR["Proposal: a screen spec<br/>(conditions, rank, unmapped)"]
   R --> PR
   PR --> AU["Stored on the screen:<br/>proposal JSON + parser label"]
-  PR --> V{"Condition validations<br/>(the whitelist)"}
-  V -- valid --> K["Saved as conditions"]
-  V -- invalid --> N["Dropped, with a note shown to the user"]
-  PR -- unrecognized clauses --> N2["'Didn't understand …' note"]
+  PR --> V{"ScreenSpec checks<br/>(the contract)"}
+  V -- valid and computable --> K["Saved as conditions"]
+  V -- "invalid, or a field<br/>not computed here" --> N["Not screened, with the reason"]
+  PR -- unmapped clauses --> N2["Not screened, with the reason"]
   K --> UI["'Here's what I understood'"]
   N --> UI
   N2 --> UI
 ```
 
 - The rule-based parser splits the text into clauses (keeping "between $20 and $200" intact), then each
-  clause is matched by one rule (RSI, MACD, volume, 52-week drawdown, moving average, price).
+  clause is matched by one rule (RSI, MACD, volume, 52-week drawdown, moving average, returns, price) that emits a
+  contract condition. A phrase it recognizes but the contract can't express ("21-day EMA", "MACD bearish cross") or
+  this demo can't compute ("revenue growth") comes back unmapped, with the reason.
 - The optional LLM path uses **RubyLLM** (`RubyLLM.chat(...).with_instructions(...).with_schema(SCHEMA).ask(text)`),
   Ruby's LiteLLM: one client, many providers. The provider follows from the model name in RubyLLM's registry
   (`deepseek-v4-flash` → DeepSeek, the default; `gpt-5` → OpenAI; `gemini-2.5-flash` → Gemini); change the model in the
@@ -293,24 +316,25 @@ flowchart TD
   | DeepSeek, chat completions (`SCREEN_PARSER_PROTOCOL=chat_completions`) | **No.** It only promises *a* JSON object; RubyLLM logs a warning and falls back to `json_object` mode |
 
   Where the provider doesn't enforce it, **only the code does**: the prompt spells out the shape, the parser reads
-  the reply defensively, and the `Condition` validations drop anything off-schema. That boundary is the same for
+  the reply defensively, and `ScreenSpec` refuses anything off-schema. That boundary is the same for
   every model, which is why the app was safe to run on DeepSeek before the protocol switch.
   `ScreenParser::LLM::PROTOCOLS` holds the per-provider default; the prompt's metadata (`{"protocol": ...}`) or
   `SCREEN_PARSER_PROTOCOL` override it. `spec/models/screen_parser/llm_deepseek_spec.rb` drives RubyLLM's real HTTP
   client against stubbed DeepSeek endpoints for both protocols.
 - Measured against DeepSeek's live API with `bin/rails prompts:eval`, `deepseek-v4-flash`, run 2026-10-20 on the
-  Mac Studio: **9/9** on both prompt v1 and v2 over the Responses API (schema enforced, no fallback warning), and
-  **9/9** on v1 over chat completions (`json_object` mode).
+  Mac Studio, **before the move to the shared contract** (the old prompt and 9 cases): 9/9 over the Responses API
+  (schema enforced, no fallback warning) and 9/9 over chat completions. The prompt, schema and cases have changed
+  since; the new contract's run is still to do.
 - What counts as "the LLM failed" is a closed list: `RubyLLM::Error` (the provider's API errors), `Faraday::Error`
   (the network), `JSON::ParserError`, and `ScreenParser::LLM::Error`, whose subclasses name the two unusable
   replies: `IncompleteResponse` (the model stopped early) and `MalformedResponse` (no `conditions` array). Those
   fall back to the rules with a note; anything else is a bug and raises.
-- An off-schema condition can't crash the page: `Screen.from_query` drops one whose attributes aren't scalars
-  (`"value": [30]`, `"period": {}`) with a note before `Condition` sees it, and keeps at most
+- An off-schema condition can't crash the page: `Screen#adopt` checks the shape first (`"value": {}`, a numeric
+  field, a value *and* a ref are each refused with EquityScout's message), and keeps at most
   `Screen::MAX_CONDITIONS` (10), noting "Kept the first 10 conditions".
 - The parser is injected (`Screen.from_query(query, parser:)`), which is how the tests swap in fakes without a
   mocking library.
-- Every screen stores the raw proposal and a parser label (`rules v1`; `deepseek-v4-flash, prompt screen-parser v3`
+- Every screen stores the raw proposal and a parser label (`rules v2`; `deepseek-v4-flash, prompt screen-parser v3`
   when the prompt came from PromptEngine; or the model plus a fingerprint of the in-code prompt and schema), so any
   result can be traced back to exactly what proposed it.
 
@@ -334,8 +358,9 @@ current one), so an old version can be replayed for comparison.
   as a template (`{{query}}`). If the record is missing or archived, the in-code prompt is used, so tests and a
   fresh checkout behave the same.
 - What PromptEngine does **not** own: the JSON schema and the validations. You can rewrite the prompt in the
-  browser, but the schema is still built from `Condition::SPECS` and every proposal still goes through the
-  `Condition` validations. Editable wording, fixed boundary.
+  browser, but the schema is still built from `ScreenSpec` and every proposal still goes through its checks.
+  Editable wording, fixed boundary. When the contract changes, `db/seeds.rb` replaces a prompt written for the old
+  one (the prompt's `metadata["contract"]` says which), as a new version, so the switch is on record.
 - Engine basics, in 2007 terms: an engine is a plugin that ships its own models, controllers, views, routes and
   migrations. `isolate_namespace PromptEngine` keeps its tables (`prompt_engine_*`), routes and helpers apart
   from the app's. Its migrations are copied into the app with `bin/rails prompt_engine:install:migrations`
@@ -361,11 +386,12 @@ DEEPSEEK_API_KEY=... VERSION=1 bin/rails prompts:eval                # replay an
 OPENAI_API_KEY=... SCREEN_PARSER_MODEL=gpt-5 bin/rails prompts:eval  # same cases, another provider
 ```
 
-- The cases live in git, in `db/evals/screen_parser.yml` (the five example queries plus four more), and
+- The cases live in git, in `db/evals/screen_parser.yml` (the six example queries plus six edge cases), and
   `db/seeds.rb` loads them into the eval set.
-- **Graded on what the code accepts, not on the JSON.** Each case's expected output is the sorted
-  `Condition#label`s that survive defaults and validation ("RSI(14) below 30"). `{"period": null}` and
-  `{"period": 14}` grade the same; a condition the whitelist rejects doesn't count.
+- **Graded on what the code accepts, not on the JSON.** Each case's expected output is the sorted plain-English
+  wording of the conditions `Screen#adopt` accepts ("Daily RSI (14) under 30"), plus a marker when something is
+  reported as not screened. `"value": 30` and `"value": 30.0` grade the same; a refused condition shows up as
+  "not screened", which the grade sees.
 - A spec runs the rule-based parser through every case. That keeps the expected answers honest, and it gives
   the deterministic baseline any prompt version has to match.
 - `PromptEval` (`app/models/prompt_eval.rb`) writes PromptEngine's own `EvalRun` / `EvalResult` rows, so its
@@ -610,9 +636,11 @@ broadcasts *must* go through a shared store to reach the browser. `bin/rails db:
 flowchart LR
   subgraph Models["Model specs: spec/models (fast, no network)"]
     I["Indicators<br/>known values, incl. Wilder's RSI table"]
+    FE["Features<br/>parity with EquityScout's Python output"]
+    SS["ScreenSpec<br/>wording, messages, percentile ranking"]
     PA["ScreenParser<br/>every rule"]
     CL["ScreenParser::LLM<br/>instance_double of RubyLLM::Chat"]
-    CO["Condition<br/>whitelist + evaluate + strength"]
+    CO["Condition<br/>contract checks, pass / fail / missing"]
     PS["PriceSeries<br/>weekly resample"]
     YH["MarketData::Yahoo<br/>parse fixture JSON"]
     SC["Screen<br/>fake source + fake LLM"]
@@ -631,6 +659,9 @@ flowchart LR
   crafted bars and a fake LLM parser that proposes an invalid condition. Where a real library object is involved
   (the RubyLLM chat), an RSpec `instance_double` verifies that the stub matches the real class's methods.
 - **Known-value tests** for every indicator. RSI is checked against Wilder's published worked example.
+- **A parity test with the Python version.** `spec/fixtures/files/equity_scout_features.json` holds daily bars and
+  the values EquityScout's own `snapshot()` computed from them (the fixture names the EquityScout commit);
+  `spec/models/features_spec.rb` requires every field to match to 1e-9, including where history is too short.
 - **External APIs are stubbed with WebMock**, and real network access is disabled for the whole suite
   (`spec/support/webmock.rb`). The Yahoo spec checks the request it makes and that HTTP errors and timeouts
   become `MarketData::Error`.
@@ -731,7 +762,7 @@ then needs its own types, fetching, caching and rendering code.
 |---|---|---|---|
 | Routing | `resources :screens` | FastAPI `@app.post("/screens")` / Next.js route handlers | Rails derives 7 REST routes from one line. |
 | Input validation | `params.expect(screen: [:query])` | Pydantic request model | Pydantic validates types too; Rails params are strings until the model casts them. |
-| Domain validation | Active Record validations, `Condition::SPECS` | Pydantic validators, `Literal[...]` / `Enum` fields | Same whitelist idea. In Python I'd write `indicator: Literal["rsi","macd",...]`. |
+| Domain validation | `ScreenSpec.condition_problems` (a port of EquityScout's `validate()`) | EquityScout's `spec.validate()`, or Pydantic `Literal[...]` fields | The same contract in both of my products: same fields, same messages. |
 | ORM | Active Record (model = table + behaviour) | SQLAlchemy 2.0 (mapped classes + separate session) | Active Record is "the object saves itself"; SQLAlchemy is a unit-of-work with an explicit session. |
 | Migrations | `bin/rails g migration`, `db/migrate/*.rb`, `schema.rb` | Alembic revisions | Both generate and version schema changes; Rails keeps a canonical `schema.rb`. |
 | Value objects | `Data.define` | `@dataclass(frozen=True)` / Pydantic `BaseModel` | Near one-to-one. |
@@ -751,32 +782,33 @@ then needs its own types, fetching, caching and rendering code.
 | Plugins / sub-apps | Mountable engines (`mount X::Engine => "/x"`) | FastAPI `include_router` / mounted ASGI apps; Django apps | Engines bring their own migrations, views and assets. |
 | Tests | RSpec + FactoryBot; system specs with Cuprite | pytest (+ factory_boy), Playwright for E2E | `let` ≈ pytest fixtures; Playwright ≈ system tests. |
 | Lint / security | RuboCop, Brakeman, bundler-audit | Ruff, mypy/pyright, Bandit, pip-audit | |
-| LLM call | RubyLLM, `with_schema` built from `SPECS` | a provider SDK (`openai`, …) or LiteLLM, schema from Pydantic (`model_json_schema()`) | Python is nicer here: the Pydantic model *is* the schema and the validator. |
+| LLM call | RubyLLM, `with_schema` built from `ScreenSpec::FIELDS` | a provider SDK (`openai`, …) or LiteLLM, schema from Pydantic (`model_json_schema()`) | Python is nicer here: the Pydantic model *is* the schema and the validator. |
 | Deploy | Kamal + Docker to any host; Thruster | Docker + Fly/Render/ECS; Vercel for Next.js | |
 | Processes in dev | `bin/dev` (one) | API server + worker + Redis + Postgres + Next dev server | Usually `docker compose up`. |
 
 ### The same three pieces, side by side
 
-**1. The whitelist (what the model is allowed to propose)**
+**1. The contract (what the model is allowed to propose)**: the same one, in both of my products
 
 ```ruby
-# Rails: app/models/condition.rb
-SPECS = { "rsi" => { operators: %w[below above], period: 14, value: 0..100 }, ... }
-validates :indicator, inclusion: { in: SPECS.keys }
-validate  :fits_spec
+# Rails: app/models/screen_spec.rb, a port of EquityScout's spec.py
+FIELDS = [ [ "rsi14", "technical", "number", "Wilder RSI(14), 0-100" ], ... ].to_h { ... Field.new(...) }
+def condition_problems(c, where: "condition")
+  return problems << "#{where}: '==' is only for boolean fields" if op == "=="
+  ...
+end
 ```
 ```python
-# Python: Pydantic
-class Condition(BaseModel):
-    indicator: Literal["rsi", "macd", "sma", "ema", "volume", "drawdown", "price"]
-    operator: Literal["above", "below", "crosses_up", "crosses_down"]
-    timeframe: Literal["daily", "weekly"] = "daily"
-    period: int | None = Field(None, ge=2, le=250)
-    value: float | None = None
-
-    @model_validator(mode="after")
-    def fits_spec(self): ...  # same per-indicator checks
+# Python: EquityScout, src/scout/spec.py
+FIELDS = {f.name: f for f in [Field("rsi14", "technical", "number", "Wilder RSI(14), 0-100"), ...]}
+def validate(d: dict) -> Spec:
+    if op == "==":
+        p.append(f"{where}: '==' is only for boolean fields")
+    ...
 ```
+Both are hand-written validators over one field table, with the same messages. A Pydantic model would be the more
+idiomatic Python (types *are* the schema), but EquityScout's prompt and recordings depend on its exact messages, so
+the port keeps them.
 
 **2. The background job**
 
@@ -841,9 +873,9 @@ them is the same as in this app: a typed, whitelisted contract, and every propos
 
 Each one touches a different part of the stack. All of them can be done with the existing tests as a guide.
 
-1. **Add an indicator end to end.** Bollinger Bands: a pure function in `Indicators` with a known-value test,
-   a `SPECS` entry, an `evaluate` branch, and a parser rule with a test. Notice the LLM schema updates by
-   itself because it is generated from `SPECS`.
+1. **Add a field end to end, in both products.** `bb_pct_b` (Bollinger %B): add it to EquityScout's `spec.py` and
+   `indicators.py` first, then port it: `ScreenSpec::FIELDS` and `AVAILABLE`, `Indicators`, `Features`, a parser
+   rule, and a regenerated parity fixture. Notice the LLM schema updates by itself because it is built from `FIELDS`.
 2. **Resume instead of restart.** A retried `run` deletes the screen's matches and rescans everything. Make it
    pick up where it stopped: upsert matches on the `(screen_id, symbol)` unique index, remove the ones that no
    longer pass, and keep the spec that runs a screen twice green. What should the live table show meanwhile?
