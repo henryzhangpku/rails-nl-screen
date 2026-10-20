@@ -38,7 +38,7 @@ Suggested reading order for the code: `config/routes.rb` → `app/controllers/sc
 | JavaScript delivery | **Importmaps** (no bundler, no `node_modules`) | `config/importmap.rb` |
 | CSS / assets | **Propshaft** serving plain CSS, one file per component, BEM names (`ns-` prefix) | `app/assets/stylesheets/*.css` |
 | External APIs | Net::HTTP (Yahoo chart API), **RubyLLM** (optional, for Claude) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/claude.rb` |
-| Tests | **RSpec** (rspec-rails): model, request and system specs (Selenium + headless Chrome) | `spec/**` |
+| Tests | **RSpec** (rspec-rails), FactoryBot, WebMock; system specs with **Cuprite** (headless Chrome over CDP) | `spec/**` |
 | CI | GitHub Actions: Brakeman, bundler-audit, importmap audit, RuboCop, tests | `.github/workflows/ci.yml` |
 | Static demo | Rake task + `ApplicationController.render` + GitHub Pages | `lib/tasks/demo.rake`, `.github/workflows/pages.yml` |
 | Deployment (configured) | **Kamal** + Docker | `config/deploy.yml`, `.kamal/` |
@@ -342,12 +342,36 @@ the page shows the database's current state. Two details made it work:
   be swallowed until the end.
 - The refresh also re-sorts the table by score, so ranking updates live while rows stream in.
 
-### Stimulus: the one piece of JavaScript
+### The history page: Turbo Frames, pagination, toasts, view transitions
+`/screens` lists every screen you've run and shows four more Hotwire patterns in one page:
+
+- **A Turbo Frame as the "live region".** The table and pager sit inside `turbo_frame_tag "screens"`. The filter
+  form is a plain `GET` form outside the frame with `data-turbo-frame="screens"` and
+  `data-turbo-action="advance"`: submitting it replaces only the frame, and Turbo pushes the new URL, so the
+  back button and shared links work. Sort headers (`ScreensHelper#sortable_header`) and kaminari page links
+  live inside the frame and carry `data-turbo-action="advance"` too. Links that should leave the frame use
+  `data-turbo-frame="_top"`.
+- **Server-side filtering with chainable scopes** (`Screen.matching`, `with_status`, `from_source`,
+  `with_matches`); each ignores a blank value, so the controller just chains them. Sort column and direction
+  are whitelisted and passed to `order(sort => direction)`, never interpolated into SQL.
+- **A counter cache.** `belongs_to :screen, counter_cache: true` keeps `screens.matches_count` current, so the
+  table can sort and filter by match count without a `COUNT` per row.
+- **Pagination with kaminari**, with its partials overridden in `app/views/kaminari/` to use the app's CSS.
+- **Toasts over Turbo Streams.** Delete is a `button_to` with `turbo_confirm`; the controller answers
+  `format.turbo_stream` with two actions, `remove` the row and `update` the `#toast` slot in the layout, and
+  falls back to a redirect with a flash for plain HTML.
+- **View transitions.** `<meta name="view-transition" content="same-origin">` makes Turbo animate page changes
+  with the browser's View Transitions API; the history link and the show page's query box share a
+  `view-transition-name`, so the query appears to move into place.
+
+### Stimulus: small pieces of JavaScript
 ```html
 <button data-action="examples#fill" data-examples-query-param="RSI under 30">…</button>
 ```
-`examples_controller.js` (8 lines) fills the textarea when an example is clicked. Stimulus connects behaviour
-to HTML through `data-` attributes; there is no client-side rendering.
+Three controllers, all small. `examples_controller.js` fills the textarea when an example is clicked.
+`filter_controller.js` decides *when* the history form submits: at once for selects and checkboxes, after a
+300 ms pause while typing. `toast_controller.js` removes a toast after a few seconds. Stimulus connects
+behaviour to HTML through `data-` attributes; there is no client-side rendering.
 
 ### Importmaps: no build step
 `config/importmap.rb` pins Turbo and Stimulus and every file in `app/javascript/controllers`. The browser
@@ -446,7 +470,12 @@ flowchart LR
 - **External APIs are stubbed with WebMock**, and real network access is disabled for the whole suite
   (`spec/support/webmock.rb`). The Yahoo spec checks the request it makes and that HTTP errors and timeouts
   become `MarketData::Error`.
-- **System test** runs the real UI in headless Chrome with synthetic prices and an inline job.
+- **FactoryBot** builds valid screens with conditions and matches for the history specs
+  (`create(:screen, :with_matches, matches: 3)`); the parser and scan specs still use injected fakes.
+- **System specs use Cuprite**, which drives Chrome directly over the DevTools protocol, so there is no
+  chromedriver to keep in step with the browser. They cover running a screen end to end, and the history page:
+  search as you type, sorting, and delete with a toast. The preview-card screenshot uses the same engine
+  (Ferrum).
 - **CI** (`.github/workflows/ci.yml`) runs Brakeman, bundler-audit, importmap audit, RuboCop (omakase style),
   the test suite, and the system test on every push.
 
@@ -553,7 +582,7 @@ then needs its own types, fetching, caching and rendering code.
 | Styling | Plain CSS, BEM + prefix, one file per component, via Propshaft | Tailwind / CSS modules | |
 | Autoloading | Zeitwerk (path = constant) | Explicit `import` | Python is explicit; Rails is convention. |
 | Config / secrets | `credentials.yml.enc` + env vars | `.env` + `pydantic-settings` | |
-| Tests | RSpec; system specs with headless Chrome | pytest (+ fixtures), Playwright for E2E | `let` ≈ pytest fixtures; Playwright ≈ system tests. |
+| Tests | RSpec + FactoryBot; system specs with Cuprite | pytest (+ factory_boy), Playwright for E2E | `let` ≈ pytest fixtures; Playwright ≈ system tests. |
 | Lint / security | RuboCop, Brakeman, bundler-audit | Ruff, mypy/pyright, Bandit, pip-audit | |
 | LLM call | RubyLLM, `with_schema` built from `SPECS` | `anthropic` Python SDK (or LiteLLM), schema from Pydantic (`model_json_schema()`) | Python is nicer here: the Pydantic model *is* the schema and the validator. |
 | Deploy | Kamal + Docker to any host; Thruster | Docker + Fly/Render/ECS; Vercel for Next.js | |
@@ -652,8 +681,9 @@ Each one touches a different part of the stack. All of them can be done with the
    idempotent, and write a test that runs a screen twice.
 3. **Fan out the job.** Split `RunScreenJob` into one job per batch of 20 symbols. What has to change so
    progress and the "done" status are still correct? (Hint: count finished batches.)
-4. **Use a Turbo Frame.** Put "Recent screens" on the new page into a `turbo_frame_tag` that lazy-loads from
-   its own action (`loading: :lazy`).
+4. **Edit in place with a Turbo Frame.** Let a screen be renamed from the history table: wrap the query cell
+   in a `turbo_frame_tag dom_id(screen)`, link it to an `edit` action whose view has the same frame, and
+   `update` back to the row.
 5. **Write a second Stimulus controller.** Show a live preview of the parsed conditions while typing, by
    calling a small endpoint that renders the `_understood` partial as HTML.
 6. **Schedule a refresh.** Use `config/recurring.yml` (Solid Queue's cron) to pre-fetch bars every weekday
