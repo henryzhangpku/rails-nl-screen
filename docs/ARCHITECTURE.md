@@ -1,0 +1,506 @@
+# Study notes: re-learning Rails through one small app
+
+*Henry Zhang. I last used Rails around 2007 (Rails 1.2/2.0: Prototype, RJS, `script/generate`, Mongrel,
+Capistrano). These notes walk through how the Rails 8 stack is used in one small, real app, layer by layer,
+with a short "In 2007 / Now" note in each section and exercises at the end.*
+
+## The app these notes are about
+
+NL Screen turns a plain-English stock screen ("RSI(14) under 30, MACD crossing up, price above the 200-day
+moving average") into typed, whitelisted conditions, runs them over 100 large US stocks on daily prices, and
+streams ranked matches into the page as they're found.
+
+It is deliberately a *default* Rails 8 application: one process, SQLite everywhere, no Redis, no Node build,
+no front-end framework. Each section below covers one layer: which Rails piece does the work, where it lives
+in the code, and why it was chosen.
+
+Suggested reading order for the code: `config/routes.rb` → `app/controllers/screens_controller.rb` →
+`app/models/screen.rb` → `app/models/condition.rb` → `app/models/screen_parser.rb` →
+`app/models/indicators.rb` → `app/models/match.rb` → `app/views/screens/show.html.erb`.
+
+- Live static demo: https://henryzhangpku.github.io/rails-nl-screen/
+- Code: https://github.com/henryzhangpku/rails-nl-screen
+
+---
+
+## 1. The stack at a glance
+
+| Layer | Rails 8 piece | Where in the code |
+|---|---|---|
+| Web server | Puma (+ Thruster in production) | `config/puma.rb`, `Dockerfile` |
+| Routing / HTTP | `resources :screens`, one controller | `config/routes.rb`, `app/controllers/screens_controller.rb` |
+| Domain logic | Active Record models and plain Ruby objects, autoloaded by Zeitwerk | `app/models/*` |
+| Persistence | SQLite via Active Record, 4 databases | `config/database.yml`, `db/migrate/*` |
+| Background work | Active Job on **Solid Queue**, run inside Puma | `app/jobs/run_screen_job.rb`, `config/queue.yml` |
+| Caching | **Solid Cache** (cache entries in a SQLite table) | `app/models/bar.rb`, `config/cache.yml` |
+| Real-time | Action Cable on **Solid Cable**, Turbo Streams and Turbo 8 page refreshes | `app/models/match.rb`, `app/models/screen.rb`, `config/cable.yml` |
+| Front end | Hotwire: Turbo Drive, Turbo Streams, one Stimulus controller | `app/views/**`, `app/javascript/controllers/examples_controller.js` |
+| JavaScript delivery | **Importmaps** (no bundler, no `node_modules`) | `config/importmap.rb` |
+| CSS / assets | **Propshaft** serving one hand-written stylesheet | `app/assets/stylesheets/application.css` |
+| External APIs | Net::HTTP (Yahoo chart API), official `anthropic` gem (optional) | `app/models/market_data/yahoo.rb`, `app/models/screen_parser/claude.rb` |
+| Tests | Minitest: unit, integration, system (Selenium + headless Chrome) | `test/**` |
+| CI | GitHub Actions: Brakeman, bundler-audit, importmap audit, RuboCop, tests | `.github/workflows/ci.yml` |
+| Static demo | Rake task + `ApplicationController.render` + GitHub Pages | `lib/tasks/demo.rake`, `.github/workflows/pages.yml` |
+| Deployment (configured) | **Kamal** + Docker | `config/deploy.yml`, `.kamal/` |
+
+---
+
+## 2. System overview
+
+```mermaid
+flowchart TB
+  subgraph Browser
+    UI["Page (ERB HTML)<br/>Turbo Drive + Stimulus"]
+    WS["Turbo Streams<br/>subscription"]
+  end
+
+  subgraph Puma["Puma process (bin/dev)"]
+    C["ScreensController"]
+    M["Models<br/>Screen · Condition · Match · Bar"]
+    P["ScreenParser<br/>(rules)"]
+    CL["ScreenParser::Claude<br/>(optional)"]
+    AC["Action Cable"]
+    subgraph SQ["Solid Queue supervisor (Puma plugin)"]
+      J["RunScreenJob"]
+    end
+  end
+
+  subgraph SQLite["SQLite files in storage/"]
+    DB1[("primary<br/>screens, conditions,<br/>matches, bars")]
+    DB2[("queue<br/>solid_queue_*")]
+    DB3[("cache<br/>solid_cache_entries")]
+    DB4[("cable<br/>solid_cable_messages")]
+  end
+
+  Y["Yahoo chart API<br/>daily OHLCV"]
+  A["Claude API"]
+
+  UI -- "POST /screens" --> C
+  C --> P
+  C -. "if ANTHROPIC_API_KEY" .-> CL
+  CL -. "JSON proposal" .-> A
+  C --> M --> DB1
+  C -- "perform_later" --> DB2
+  DB2 --> J
+  J --> M
+  J -- "fetch once per symbol per day" --> Y
+  J -- "fetched-today marker" --> DB3
+  M -- "broadcast" --> DB4
+  DB4 --> AC --> WS --> UI
+```
+
+Everything inside the Puma box is one OS process tree started by `bin/dev`. The four SQLite files replace
+what used to be Postgres + Redis + Memcached + a Sidekiq process.
+
+---
+
+## 3. A request, end to end
+
+> **In 2007** the form would post, the controller would redirect, and any "live" update meant `periodically_call_remote` polling with RJS. **Now** the redirect is the same, but updates are pushed from the server over a WebSocket as HTML fragments.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant B as Browser (Turbo)
+  participant C as ScreensController
+  participant S as Screen / Condition
+  participant Q as Solid Queue
+  participant J as RunScreenJob
+  participant D as Yahoo API
+  participant K as Solid Cable
+
+  U->>B: types a screen, clicks "Run screen"
+  B->>C: POST /screens (Turbo Drive form submit)
+  C->>S: Screen.from_query(text)
+  Note over S: parser proposes attributes,<br/>Condition validations keep or drop each
+  C->>S: save (screens + conditions)
+  C->>Q: RunScreenJob.perform_later(screen)
+  C-->>B: 302 redirect to /screens/:id
+  B->>C: GET /screens/:id
+  C-->>B: "Here's what I understood" + empty results table<br/>+ turbo_stream_from(screen)
+  B->>K: subscribe to this screen's stream
+  Q->>J: dequeue and perform
+  loop each of 100 symbols
+    J->>D: daily bars (only if not fetched today)
+    J->>S: evaluate every condition
+    alt all conditions pass
+      J->>S: Match.create (with score)
+      S->>K: broadcast_append_to screen (row HTML)
+      K-->>B: turbo-stream: append the row to the results table
+    end
+    J->>S: save progress (at most twice a second)
+    S->>K: broadcast_refresh_to screen
+    K-->>B: turbo-stream refresh
+    B->>C: GET /screens/:id (refresh, morph the diff)
+  end
+  J->>S: status = done
+```
+
+Steps 13–19 are where Hotwire does its work: the server renders HTML fragments and pushes them; the browser
+never parses JSON or holds application state.
+
+---
+
+## 4. Data model
+
+> **In 2007** status was a string column plus constants, structured data went into YAML `serialize` columns, and bulk inserts were a loop of `save`. **Now**: `enum`, native JSON columns, `upsert_all`, and `null: false` constraints generated by the migration DSL.
+
+```mermaid
+erDiagram
+  SCREENS ||--o{ CONDITIONS : "has_many (ordered by position)"
+  SCREENS ||--o{ MATCHES : "has_many (ranked by score)"
+  BARS }o..o{ MATCHES : "looked up by symbol (no FK)"
+
+  SCREENS {
+    text query
+    string source "rules | claude"
+    string parser "e.g. rules v1, or model + prompt fingerprint"
+    json proposal "raw proposal before validation (audit)"
+    string status "enum: pending running done failed"
+    integer scanned_count
+    integer universe_size
+    json notes "dropped / not understood / data gaps"
+  }
+  CONDITIONS {
+    string indicator "rsi macd sma ema volume drawdown price"
+    string timeframe "daily | weekly"
+    string operator "above below crosses_up crosses_down"
+    integer period
+    float value
+    integer position
+  }
+  MATCHES {
+    string symbol
+    json details "observed value per condition"
+    string why "one-line reason"
+    float score "0..1, used for ranking"
+  }
+  BARS {
+    string symbol
+    date date
+    float open
+    float high
+    float low
+    float close
+    bigint volume
+  }
+```
+
+Rails features this exercises:
+
+- **Associations with scopes**: `has_many :matches, -> { order(score: :desc, id: :asc) }` makes "ranked" the
+  default everywhere, including in the static demo.
+- **`enum :status`** with string values gives `screen.done?`, `screen.running!` and `Screen.failed` for free.
+- **JSON columns** (`notes`, `proposal`, `details`) for small structured blobs that are never queried.
+- **Constraints in the database, not just the model**: `null: false`, defaults, and a unique index on
+  `bars (symbol, date)`, which is what makes `upsert_all` idempotent.
+- **`upsert_all`**: one statement inserts or updates two years of bars for a symbol.
+
+---
+
+## 5. The domain layer: "it's all in `app/models`"
+
+> **In 2007** `lib/` plus `require` statements, and `const_missing` magic that broke in surprising ways. **Now** Zeitwerk maps file paths to constants, so a plain Ruby module dropped into `app/models/` just works, in development and with eager loading in production.
+
+Rails' omakase answer to "where does business logic go?" is the models directory. Nothing here is a
+"service object" folder; plain Ruby objects sit next to Active Record models, and **Zeitwerk** loads them
+by file name (`app/models/market_data/yahoo.rb` ⇒ `MarketData::Yahoo`).
+
+| Object | Kind | Job |
+|---|---|---|
+| `Screen` | Active Record | Owns the query, builds itself from text (`from_query`), runs the scan (`run`), broadcasts progress. |
+| `Condition` | Active Record | One whitelisted rule. `SPECS` is the whitelist; validations enforce it; `evaluate(series)` returns a result. |
+| `Match` | Active Record | A passing symbol with values, reason and score. Broadcasts itself on create. |
+| `Bar` | Active Record | Local cache of daily prices. `series_for(symbol)` fetches at most once a day. |
+| `Indicators` | Module of pure functions | SMA, EMA, Wilder RSI, MACD, cross detection, over plain arrays. |
+| `PriceSeries` | Plain object | Ordered OHLCV points; resamples daily to weekly. |
+| `MarketData::Yahoo` / `::Synthetic` | Modules | Where prices come from (real, or deterministic fake for offline use). |
+| `ScreenParser` / `ScreenParser::Claude` | Modules | Turn text into *proposed* condition attributes. |
+| `Universe` | Module | Reads the 100 tickers from `db/universe.txt`. |
+
+Modern Ruby used along the way: `Data.define` for small immutable value objects
+(`Condition::Evaluation`, `PriceSeries::Point`, `ScreenParser::Result`) and one-line endless methods
+(`def spec = SPECS[indicator]`).
+
+### The whitelist is the safety boundary
+
+`Condition::SPECS` lists every allowed indicator, its operators, its default period, and the valid range of
+its value. A proposed condition becomes a database row only if it passes:
+
+```ruby
+validates :indicator, inclusion: { in: SPECS.keys }
+validates :timeframe, inclusion: { in: TIMEFRAMES }
+validate  :fits_spec  # operator allowed? period in 2..250? value in range?
+```
+
+The same `SPECS` hash generates the JSON schema sent to Claude, so the model is constrained to the shape the
+code accepts, and anything that still doesn't fit is dropped with a visible note.
+
+### Evaluation and ranking
+
+`Condition#evaluate(series)` returns `Evaluation(passed, observed, reason, strength)`:
+
+- **observed**: the number shown in the table ("RSI(14) 27.3", "1.8x avg").
+- **reason**: the phrase used in "why it matched".
+- **strength**: how far past the threshold, as a fraction of it, capped at 1 (for a MACD cross, how recent it
+  is within the 3-bar lookback). A match's `score` is the average strength; results are ordered by it.
+
+---
+
+## 6. Parsing: the model proposes, code decides
+
+> **New since 2007**: LLMs. The Rails-shaped lesson is unchanged, though: validations on the model are the boundary. The model's output is treated exactly like untrusted form input.
+
+```mermaid
+flowchart TD
+  T["Plain-English query"] --> E{"ANTHROPIC_API_KEY set?"}
+  E -- no --> R["ScreenParser (regex rules)<br/>deterministic, offline"]
+  E -- yes --> L["ScreenParser::Claude<br/>structured JSON output<br/>schema built from Condition::SPECS"]
+  L -- "error / refusal" --> R
+  L --> PR["Proposal: conditions + unrecognized"]
+  R --> PR
+  PR --> AU["Stored on the screen:<br/>proposal JSON + parser label"]
+  PR --> V{"Condition validations<br/>(the whitelist)"}
+  V -- valid --> K["Saved as conditions"]
+  V -- invalid --> N["Dropped, with a note shown to the user"]
+  PR -- unrecognized clauses --> N2["'Didn't understand …' note"]
+  K --> UI["'Here's what I understood'"]
+  N --> UI
+  N2 --> UI
+```
+
+- The rule-based parser splits the text into clauses (keeping "between $20 and $200" intact), then each
+  clause is matched by one rule (RSI, MACD, volume, 52-week drawdown, moving average, price).
+- The optional Claude path uses the official `anthropic` gem with `output_config.format` set to a JSON schema,
+  so the reply is guaranteed to parse. The parser is injected (`Screen.from_query(query, parser:)`), which is
+  how the tests swap in fakes without a mocking library.
+- Every screen stores the raw proposal and a parser label (`rules v1`, or the model name plus a fingerprint of
+  the prompt and schema), so any result can be traced back to exactly what proposed it.
+
+---
+
+## 7. Background work: Active Job + Solid Queue
+
+> **In 2007** BackgrounDRb or a cron job running `script/runner`. Later, Resque/Sidekiq with Redis. **Now** Active Job is the interface and Solid Queue the default backend, using the database you already have.
+
+- `RunScreenJob` is three lines; it calls `screen.run`. The work stays in the model, which keeps it testable
+  without a queue.
+- **Solid Queue** stores jobs in the `queue` SQLite database. No Redis.
+- In development (and optionally in production via `SOLID_QUEUE_IN_PUMA`) the Solid Queue supervisor runs
+  **inside Puma** as a plugin (`config/puma.rb`), so `bin/dev` is a single command and a single process tree.
+- Tests use the `:test` adapter (assert a job was enqueued); the system test switches to `:inline` so the
+  whole flow runs inside one request.
+- `Screen#run` rescues data errors per symbol (a ticker with no data is recorded as a gap and skipped), and
+  marks the screen `failed` on anything unexpected, then re-raises so the job's failure is visible in
+  Solid Queue.
+
+Known gap, deliberately left visible: if the job were retried after creating some matches, it would create
+them again. The fix is to clear matches at the start of `run`, or add a unique index on `(screen_id, symbol)`.
+
+---
+
+## 8. Real-time UI: Hotwire
+
+> **In 2007** Prototype + RJS: the server sent JavaScript that edited the DOM (`page.insert_html`). **Now** the server sends HTML and Turbo decides how to apply it. The idea, server-driven UI, came back; the mechanism got simpler and safer.
+
+### Turbo Drive
+Links and forms are intercepted by Turbo and swapped in without a full page load. The create action returns a
+normal redirect; a failed parse re-renders the form with `422 Unprocessable Content`, which Turbo displays in
+place.
+
+### Turbo Streams: one row per match
+```ruby
+# app/models/match.rb
+after_create_commit -> { broadcast_append_to screen, target: "matches" }
+```
+```erb
+<%# app/views/screens/show.html.erb %>
+<%= turbo_stream_from @screen %>
+```
+When the job creates a `Match`, Rails renders `matches/_match.html.erb` and sends it over Action Cable. The
+browser appends the `<tr>` to `<tbody id="matches">`. No JavaScript was written for this.
+
+### Turbo 8 page refreshes for progress (and the ordering bug)
+The first version also *replaced* the progress line with a Turbo Stream on every update. In practice Action
+Cable hands broadcasts to a pool of threads, so two quick messages could arrive **out of order**: the page
+sometimes said "Scanning 100/100" after the job had finished.
+
+The fix uses Turbo 8's page refresh:
+```ruby
+# app/models/screen.rb
+after_update_commit -> { broadcast_refresh_to self }
+```
+```erb
+<%= turbo_refreshes_with method: :morph, scroll: :preserve %>
+```
+A refresh tells the browser to re-fetch the page and morph in only what changed, so whatever arrives last,
+the page shows the database's current state. Two details made it work:
+
+- Progress is saved at most twice a second. The browser debounces refreshes, so a refresh every 20 ms would
+  be swallowed until the end.
+- The refresh also re-sorts the table by score, so ranking updates live while rows stream in.
+
+### Stimulus: the one piece of JavaScript
+```html
+<button data-action="examples#fill" data-examples-query-param="RSI under 30">…</button>
+```
+`examples_controller.js` (8 lines) fills the textarea when an example is clicked. Stimulus connects behaviour
+to HTML through `data-` attributes; there is no client-side rendering.
+
+### Importmaps: no build step
+`config/importmap.rb` pins Turbo and Stimulus and every file in `app/javascript/controllers`. The browser
+loads ES modules directly; there is no webpack, esbuild or `node_modules`. `bin/importmap audit` runs in CI.
+
+---
+
+## 9. Caching and market data
+
+> **In 2007** caching meant page and fragment caches on disk, or memcached as another daemon to run (`Rails.cache` itself arrived in Rails 2.1). **Now** the same `Rails.cache.fetch` API is backed by Solid Cache, a table in SQLite.
+
+- **Bars are the cache.** `Bar.series_for(symbol)` reads two years of bars from SQLite. It refreshes from the
+  data source at most once per symbol per day; the "fetched today" marker is a `Rails.cache.fetch` entry,
+  which is **Solid Cache**, another SQLite table, so it survives restarts.
+- **Sources are swappable modules** with one method, `fetch(symbol)`. `MarketData::Yahoo` is the default;
+  `MARKET_DATA=synthetic` switches to deterministic fake prices for offline work.
+- **Failures are data, not crashes.** Network and parse errors become `MarketData::Error`; the scan records
+  the symbol as a gap and continues.
+
+Two real data-quality events surfaced while building this, both handled by that design:
+
+1. The original source (Stooq) started serving a JavaScript bot check instead of CSV. Every fetch failed
+   cleanly, the demo fell back to labelled synthetic prices, and the source was replaced by Yahoo.
+2. One ticker returned no data: Fiserv had changed its ticker from `FI` back to `FISV`. A corporate action,
+   caught because gaps are reported rather than silently dropped.
+
+---
+
+## 10. Databases: four SQLite files
+
+> **In 2007** one `database.yml` entry per environment, and SQLite was for toys. **Now** multiple databases per environment are first-class, and SQLite is a supported production default.
+
+`config/database.yml` gives development and production four databases each:
+
+| Database | Holds | Used by |
+|---|---|---|
+| `primary` | screens, conditions, matches, bars | the app |
+| `queue` | `solid_queue_*` tables | Solid Queue |
+| `cache` | `solid_cache_entries` | Solid Cache |
+| `cable` | `solid_cable_messages` | Solid Cable |
+
+Development deliberately mirrors production (the Rails default is an in-memory cache and an async cable
+adapter in development). That matters here: the job runs in a separate process from the web server, so
+broadcasts *must* go through a shared store to reach the browser. `bin/rails db:prepare` creates all four.
+
+---
+
+## 11. Views and assets
+
+> **In 2007** `public/javascripts` and `public/stylesheets`; then the Sprockets asset pipeline (Rails 3.1), then Webpacker. **Now** Propshaft only fingerprints and serves files, and importmaps handle JavaScript, with no build step.
+
+- **ERB + partials**, shared between the live app and the static demo: `screens/_understood`,
+  `screens/_progress`, `screens/_results`, `matches/_match`.
+- **Propshaft** serves `application.css` with a fingerprinted URL. No Sass, no Tailwind: one stylesheet built
+  on CSS custom properties, with light and dark palettes that follow the viewer's system setting.
+- The same partial (`matches/_match`) renders a row in three situations: the initial page, a Turbo Stream
+  broadcast, and a static export. That reuse is the main payoff of server-rendered HTML.
+
+---
+
+## 12. Testing and CI
+
+> **In 2007** Test::Unit with fixtures, and browser testing meant Selenium IDE recordings. **Now** still Minitest by default, plus `ActionDispatch::SystemTestCase` driving headless Chrome, parallel tests, and Brakeman/RuboCop in CI out of the box.
+
+```mermaid
+flowchart LR
+  subgraph Unit["Unit (fast, no network)"]
+    I["Indicators<br/>known values, incl. Wilder's RSI table"]
+    PA["ScreenParser<br/>every rule"]
+    CO["Condition<br/>whitelist + evaluate + strength"]
+    PS["PriceSeries<br/>weekly resample"]
+    YH["MarketData::Yahoo<br/>parse fixture JSON"]
+    SC["Screen<br/>fake source + fake Claude"]
+  end
+  subgraph Integration
+    CT["ScreensController<br/>enqueues job, renders understanding"]
+  end
+  subgraph System
+    ST["Headless Chrome:<br/>click example → run → see results"]
+  end
+  Unit --> Integration --> System
+```
+
+- **Dependency injection instead of mocks.** `Screen#run(symbols, source:)` and
+  `Screen.from_query(query, parser:)` accept collaborators, so tests pass a `FakeSource` module that returns
+  crafted bars and a `FakeClaude` that proposes an invalid condition. Minitest 6 no longer bundles its mocking
+  library, and this style doesn't need it.
+- **Known-value tests** for every indicator. RSI is checked against Wilder's published worked example.
+- **System test** runs the real UI in headless Chrome with synthetic prices and an inline job.
+- **CI** (`.github/workflows/ci.yml`) runs Brakeman, bundler-audit, importmap audit, RuboCop (omakase style),
+  the test suite, and the system test on every push.
+
+---
+
+## 13. Build and deploy
+
+> **In 2007** Capistrano to a hand-built server running Mongrel behind Apache. **Now** `rails new` generates a Dockerfile and a Kamal config; Kamal deploys containers to any SSH host with zero-downtime switching, and Thruster sits in front of Puma.
+
+```mermaid
+flowchart LR
+  Dev["git push main"] --> CI["CI workflow<br/>scans · lint · tests · system test"]
+  Dev --> PG["Pages workflow"]
+  Cron["Weekdays after US close"] --> PG
+  PG --> EX["bin/rails demo:export<br/>runs Screen::EXAMPLES on real prices<br/>ApplicationController.render → HTML"]
+  EX --> OG["headless Chrome screenshot<br/>→ og.png link-preview card"]
+  EX --> GP["GitHub Pages<br/>henryzhangpku.github.io/rails-nl-screen"]
+  OG --> GP
+  Dev -. "configured, not used" .-> K["Kamal<br/>Docker image + Thruster<br/>to any server"]
+```
+
+- **The static demo** is produced by the app itself. `lib/tasks/demo.rake` runs each example screen exactly as
+  the job would, then renders the same partials outside of any request with
+  `ApplicationController.render(template:, layout:, assigns:)`. GitHub Actions can reach Yahoo, so the
+  published snapshot uses real prices; it is rebuilt on every push and every weekday evening.
+- **Link previews**: the export also screenshots a 1200×627 card (top-ranked results of the day) with headless
+  Chrome for Open Graph tags, so a shared link renders a proper preview.
+- **Kamal** (`config/deploy.yml`) and the generated `Dockerfile` are ready for deploying the live app to any
+  server with Docker: Thruster in front of Puma, SQLite files on a mounted volume. It isn't deployed because a
+  static snapshot covers the demo; the live app runs locally with `bin/dev`.
+
+---
+
+## 14. Trade-offs, and what would change at scale
+
+| Today | Why it's fine here | At scale |
+|---|---|---|
+| One job scans 100 symbols sequentially | ~10 s with cached bars | Fan out one job per batch of symbols; Solid Queue handles concurrency |
+| Indicators computed per screen | 100 symbols × a few indicators is trivial | Precompute nightly when bars arrive; screens become SQL queries |
+| SQLite for everything | Single node, low write volume, zero ops | Postgres for the primary DB; keep Solid Queue/Cache, consider Redis for high-volume pub/sub |
+| Yahoo's unofficial API | Free, good enough for a demo | Licensed data with corporate actions and point-in-time history |
+| Today's large caps as the universe | Simple and recognisable | Point-in-time universe membership, to avoid survivorship bias in any backtest |
+| Retry would duplicate matches | Jobs aren't retried today | Clear matches at start of run or add a unique index |
+
+The design choice that scales without change is the boundary in section 6: whatever proposes conditions
+(regexes, a model, a user), only the whitelist decides what runs, and every proposal is stored.
+
+---
+
+## 15. Exercises (to make it stick)
+
+Each one touches a different part of the stack. All of them can be done with the existing tests as a guide.
+
+1. **Add an indicator end to end.** Bollinger Bands: a pure function in `Indicators` with a known-value test,
+   a `SPECS` entry, an `evaluate` branch, and a parser rule with a test. Notice the Claude schema updates by
+   itself because it is generated from `SPECS`.
+2. **Fix the retry gap.** Add a unique index on `matches (screen_id, symbol)` with a migration, make `run`
+   idempotent, and write a test that runs a screen twice.
+3. **Fan out the job.** Split `RunScreenJob` into one job per batch of 20 symbols. What has to change so
+   progress and the "done" status are still correct? (Hint: count finished batches.)
+4. **Use a Turbo Frame.** Put "Recent screens" on the new page into a `turbo_frame_tag` that lazy-loads from
+   its own action (`loading: :lazy`).
+5. **Write a second Stimulus controller.** Show a live preview of the parsed conditions while typing, by
+   calling a small endpoint that renders the `_understood` partial as HTML.
+6. **Schedule a refresh.** Use `config/recurring.yml` (Solid Queue's cron) to pre-fetch bars every weekday
+   after the US close.
+7. **Deploy it.** Point `config/deploy.yml` at a small VPS, run `bin/rails credentials:edit` to create a
+   master key, and `kamal setup`.

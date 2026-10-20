@@ -4,6 +4,8 @@ By [Henry Zhang](https://www.officialhenryzhang.com/) ([GitHub](https://github.c
 
 A learning project: a plain-English stock screen in Rails 8 + Hotwire.
 
+**Study notes:** [How the Rails 8 stack is used here](docs/ARCHITECTURE.md): layer by layer, with architecture diagrams, "In 2007 / Now" comparisons, and exercises.
+
 Type something like
 
 > RSI(14) under 30 on the daily, MACD crossing up, volume above its 20-day average, price above the 200-day moving average
