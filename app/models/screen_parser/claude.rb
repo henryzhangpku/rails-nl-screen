@@ -1,5 +1,3 @@
-require "anthropic"
-
 # Optional: ask Claude to *propose* the typed screen as JSON. The proposal goes
 # through exactly the same Condition validations as the rule-based parser, so
 # the model can suggest but only code decides. Used only if ANTHROPIC_API_KEY is set.
@@ -49,17 +47,12 @@ module ScreenParser::Claude
   # change the prompt and you can tell which screens were parsed by which version.
   def self.label = "#{MODEL}, prompt #{Digest::SHA256.hexdigest(SYSTEM_PROMPT + SCHEMA.to_json).first(8)}"
 
-  def self.parse(text, client: Anthropic::Client.new)
-    message = client.messages.create(
-      model: MODEL,
-      max_tokens: 4000,
-      system_: SYSTEM_PROMPT,
-      output_config: { effort: :low, format_: { type: :json_schema, schema: SCHEMA } },
-      messages: [ { role: "user", content: text } ]
-    )
-    raise "Claude declined (#{message.stop_reason})" unless message.stop_reason == :end_turn
+  # The chat is injectable so tests (or a different provider) can stand in.
+  def self.parse(text, chat: RubyLLM.chat(model: MODEL, provider: :anthropic))
+    response = chat.with_instructions(SYSTEM_PROMPT).with_schema(SCHEMA).ask(text)
+    raise "Claude stopped early (#{response.finish_reason})" unless response.finish_reason.in?([ :stop, nil ])
 
-    json = JSON.parse(message.content.find { |block| block.type == :text }.text)
+    json = response.parsed
     ScreenParser::Result.new(json["conditions"].map(&:symbolize_keys), json["unrecognized"])
   end
 end

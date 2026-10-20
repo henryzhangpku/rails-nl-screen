@@ -47,6 +47,9 @@ group :development, :test do
 
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem "rubocop-rails-omakase", require: false
+
+  # Tests: RSpec
+  gem "rspec-rails", "~> 8.0"
 end
 
 group :development do
@@ -60,5 +63,4 @@ group :test do
   gem "selenium-webdriver"
 end
 
-gem "csv", "~> 3.3"
-gem "anthropic", "~> 1.80"
+gem "ruby_llm", "~> 2.1"
