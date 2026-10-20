@@ -297,7 +297,7 @@ message = PromptEngine::VariableDetector.new(version.content).render(query: text
 chat.with_instructions(version.system_message).with_schema(SCHEMA).ask(message)
 ```
 
-It renders a specific `PromptVersion` rather than calling `PromptEngine.render(name)` (which only knows the
+It renders a specific `PromptVersion` rather than calling `PromptEngine.render(slug)` (which renders the
 current one), so an old version can be replayed for comparison.
 
 - The record is created by `db/seeds.rb` from `ScreenParser::Claude::SYSTEM_PROMPT`, with the user message
@@ -308,9 +308,11 @@ current one), so an old version can be replayed for comparison.
   `Condition` validations. Editable wording, fixed boundary.
 - Engine basics, in 2007 terms: an engine is a plugin that ships its own models, controllers, views, routes and
   migrations. `isolate_namespace PromptEngine` keeps its tables (`prompt_engine_*`), routes and helpers apart
-  from the app's. Its migrations run from the gem (its `append_migrations` initializer adds them to the app's
-  migration paths), so `bin/rails db:migrate` is the whole install. Its plain BEM CSS is served by Propshaft
-  straight from the gem.
+  from the app's. Its migrations are copied into the app with `bin/rails prompt_engine:install:migrations`
+  (here: `db/migrate/*_install_prompt_engine.prompt_engine.rb`), then run like any other. Its plain BEM CSS is
+  served by Propshaft straight from the gem.
+- Which PromptEngine: the gem's GitHub `main` (the last rubygems release, 1.0.0, is a year older), via a fork
+  with three fixes, each also a separate branch for upstream review. See "Running on a fork" below.
 - PromptEngine's settings page can store API keys, encrypted with `encrypts :anthropic_api_key` (Active Record
   encryption, Rails 7+). `config/initializers/active_record_encryption.rb` derives those keys from
   `secret_key_base` unless real ones are in credentials. This app still reads the key from `ANTHROPIC_API_KEY`.
@@ -336,13 +338,25 @@ ANTHROPIC_API_KEY=... VERSION=1 bin/rails prompts:eval  # replay an older versio
 - `PromptEval` (`app/models/prompt_eval.rb`) writes PromptEngine's own `EvalRun` / `EvalResult` rows, so its
   run list, comparison page and metrics chart all work unchanged.
 
-Two things found in PromptEngine 1.0 while doing this, worth knowing if you adopt it:
+The admin's own "Run" button also works for this prompt now (see below), but it compares raw text with the
+eval set's grader, while `prompts:eval` grades what the code accepts. For this domain the rake task is the
+honest score.
 
-1. Its built-in runner (the "Run" button) only talks to **OpenAI's Evals API**: it uploads the cases as JSONL
-   and sends `prompt_version.model` to OpenAI, so a Claude prompt can't run there. It also grades by exact
-   string match on the raw model output, which is brittle for JSON.
-2. It stores `EvalResult` rows but no page shows them; the run and compare pages point to the OpenAI report.
-   `bin/rails prompts:eval` prints each failing case (actual vs. expected) instead.
+### Running on a fork: three fixes to PromptEngine
+
+Reading the engine's source turned up three gaps, still present on its `main`. The app runs on a fork that
+fixes them (`Gemfile`: `github: "henryzhangpku/prompt_engine", branch: "nl-screen"`); each fix is also its own
+branch off `main`, with specs and a CHANGELOG entry, ready to propose upstream.
+
+| Branch | Problem | Fix |
+|---|---|---|
+| `fix/unused-mailer` | An unused `ApplicationMailer < ActionMailer::Base` crashes boot with eager loading (production, CI) in apps that don't load Action Mailer, like this one | Delete it. This app now boots in production with Action Mailer off |
+| `feature/ruby-llm-evals` | Evals only ran on OpenAI's hosted Evals API: uploads the cases, sends the model name to OpenAI. Claude, Gemini, DeepSeek or a local model couldn't be evaluated | `RubyLlmEvaluationRunner`: each case goes through RubyLLM (provider from its model registry, or the prompt's `metadata["provider"]`), graded locally by `EvalGrader` (exact, contains, regex, JSON compared after parsing). Settings keys go in a scoped `RubyLLM.context`, not the global config. OpenAI models keep the Evals API |
+| `feature/eval-run-results` | `EvalResult` rows were stored but never shown | The run page lists each case: pass/fail, expected vs. actual (or the error), time |
+
+RubyLLM is Ruby's answer to Python's LiteLLM: one client, many providers, chosen by model name. The engine
+already depended on it (its Playground uses it), so routing evals through it made them provider-agnostic
+without a new dependency. Each branch passes the engine's full suite (700+ specs).
 
 ### Signing in: the Rails 8 authentication generator
 
