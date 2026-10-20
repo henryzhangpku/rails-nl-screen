@@ -8,7 +8,9 @@
   <td class="ns-table__cell ns-text--muted"><%= screen.source == "llm" ? "LLM" : "Rules" %></td>
   <td class="ns-table__cell ns-table__cell--number"><%= screen.matches_count %></td>
   <td class="ns-table__cell">
-    <%= button_to "Delete", screen, method: :delete, class: "ns-history__delete",
-          form: { data: { turbo_confirm: "Delete this screen and its matches?" } } %>
+    <% if authenticated? %>
+      <%= button_to "Delete", screen, method: :delete, class: "ns-history__delete",
+            form: { data: { turbo_confirm: "Delete this screen and its matches?" } } %>
+    <% end %>
   </td>
 </tr>

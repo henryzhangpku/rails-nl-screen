@@ -81,23 +81,43 @@ RSpec.describe "Screen history", type: :request do
   describe "DELETE /screens/:id" do
     let!(:screen) { create(:screen, :with_matches, query: "RSI under 30") }
 
-    it "removes the row and shows a toast with Turbo Streams" do
+    it "needs the admin's sign-in" do
       delete screen_path(screen), as: :turbo_stream
 
-      expect(response.media_type).to eq Mime[:turbo_stream]
-      expect(response.body).to include(%(<turbo-stream action="remove" target="#{ActionView::RecordIdentifier.dom_id(screen)}">))
-      expect(response.body).to include(%(<turbo-stream action="update" target="toast">))
-      expect(response.body).to include("Deleted “RSI under 30”")
-      expect(Screen.exists?(screen.id)).to be false
-      expect(Match.where(screen_id: screen.id)).to be_empty
+      expect(response).to redirect_to(new_session_path)
+      expect(Screen.exists?(screen.id)).to be true
     end
 
-    it "redirects back to history with a toast for plain HTML requests" do
-      delete screen_path(screen)
+    it "hides the delete button from anonymous visitors" do
+      get screens_path
+      expect(response.body).not_to include("ns-history__delete")
 
-      expect(response).to redirect_to(screens_path)
-      follow_redirect!
-      expect(response.body).to include("Deleted “RSI under 30”")
+      sign_in_as create(:user)
+      get screens_path
+      expect(response.body).to include("ns-history__delete")
+    end
+
+    context "when signed in" do
+      before { sign_in_as create(:user) }
+
+      it "removes the row and shows a toast with Turbo Streams" do
+        delete screen_path(screen), as: :turbo_stream
+
+        expect(response.media_type).to eq Mime[:turbo_stream]
+        expect(response.body).to include(%(<turbo-stream action="remove" target="#{ActionView::RecordIdentifier.dom_id(screen)}">))
+        expect(response.body).to include(%(<turbo-stream action="update" target="toast">))
+        expect(response.body).to include("Deleted “RSI under 30”")
+        expect(Screen.exists?(screen.id)).to be false
+        expect(Match.where(screen_id: screen.id)).to be_empty
+      end
+
+      it "redirects back to history with a toast for plain HTML requests" do
+        delete screen_path(screen)
+
+        expect(response).to redirect_to(screens_path)
+        follow_redirect!
+        expect(response.body).to include("Deleted “RSI under 30”")
+      end
     end
   end
 end

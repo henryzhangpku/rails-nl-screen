@@ -26,5 +26,20 @@ RSpec.describe "Screens", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include("couldn&#39;t turn that")
     end
+
+    it "is rate limited to 10 a minute per IP" do
+      # The test environment's cache is a null store; count in memory instead.
+      store = ActiveSupport::Cache::MemoryStore.new
+      allow(Rails.cache).to receive(:increment) { |*args, **options| store.increment(*args, **options) }
+
+      10.times { post screens_path, params: { screen: { query: "RSI under 30" } } }
+      expect(response).to redirect_to(screen_path(Screen.last))
+
+      expect {
+        post screens_path, params: { screen: { query: "RSI under 30" } }
+      }.not_to change(Screen, :count)
+      expect(response).to redirect_to(new_screen_path)
+      expect(flash[:toast]).to include("message" => /Too many screens/)
+    end
   end
 end

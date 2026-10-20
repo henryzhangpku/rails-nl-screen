@@ -1,5 +1,10 @@
 class ScreensController < ApplicationController
-  allow_unauthenticated_access
+  # Anyone can run and browse screens; deleting one needs the admin's sign-in.
+  allow_unauthenticated_access only: %i[index new create show]
+  # Each create parses the query (possibly with a paid LLM call) and queues a full scan.
+  rate_limit to: 10, within: 1.minute, only: :create, with: -> {
+    redirect_to new_screen_path, flash: { toast: { "status" => "error", "message" => "Too many screens at once. Try again in a minute." } }
+  }
 
   SORTS = %w[created_at matches_count query status].freeze
 

@@ -31,7 +31,14 @@ RSpec.describe "Screen history", type: :system do
     expect(page).to have_css("#screens tbody tr:first-child .ns-history__link", exact_text: "RSI under 30, MACD crossing up")
   end
 
-  it "deletes a screen in place and shows a toast" do
+  it "deletes a screen in place and shows a toast, once signed in" do
+    user = create(:user)
+    visit new_session_path
+    fill_in "Email", with: user.email_address
+    fill_in "Password", with: "password"
+    click_button "Sign in"
+    expect(page).to have_current_path(%r{\A/prompts})
+
     visit screens_path
 
     accept_confirm do
