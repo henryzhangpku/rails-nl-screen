@@ -81,6 +81,12 @@ RSpec.describe Screen do
       expect(Bar.where(symbol: "UP").count).to eq 300
     end
 
+    it "keeps the matches_count counter cache in step with the matches" do
+      screen.run(%w[UP FAST DOWN], source: fake_source)
+      expect(screen.matches_count).to eq 2
+      expect(screen.reload.matches_count).to eq 2
+    end
+
     it "ranks matches by how decisively they pass" do
       screen.run(%w[UP FAST DOWN], source: fake_source)
 

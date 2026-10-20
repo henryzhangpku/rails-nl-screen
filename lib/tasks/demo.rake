@@ -6,21 +6,18 @@
 # the views outside of any request with ApplicationController.render.
 SITE_URL = "https://henryzhangpku.github.io/rails-nl-screen/"
 
-# Screenshots the 1200x627 link-preview card (og.png) with headless Chrome.
+# Screenshots the 1200x627 link-preview card (og.png) with headless Chrome via Ferrum.
 # Best effort: without Chrome the site still builds, just without a preview image.
 def write_preview_image(out, html)
-  require "selenium-webdriver"
-  Selenium::WebDriver::Chrome::Service.driver_path = ENV["CHROMEDRIVER_PATH"] if ENV["CHROMEDRIVER_PATH"]
+  require "ferrum"
   card = out.join("og-card.html")
   File.write(card, html)
-  options = Selenium::WebDriver::Chrome::Options.new(args: %w[--headless=new --hide-scrollbars --window-size=1200,627])
-  options.binary = ENV["CHROME_BIN"] if ENV["CHROME_BIN"]
-  options.add_argument("--no-sandbox") if Process.uid.zero?
-  browser = Selenium::WebDriver.for(:chrome, options: options)
-  browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: 1200, height: 627, deviceScaleFactor: 1, mobile: false)
-  browser.navigate.to "file://#{card}"
-  20.times { break if browser.execute_script("return document.fonts.status") == "loaded"; sleep 0.25 }
-  browser.save_screenshot(out.join("og.png").to_s)
+  browser = Ferrum::Browser.new(window_size: [ 1200, 627 ], browser_path: ENV["BROWSER_PATH"],
+                                browser_options: Process.uid.zero? ? { "no-sandbox" => nil } : {})
+  browser.set_viewport(width: 1200, height: 627, scale_factor: 1) # the window size includes browser chrome; this is the page
+  browser.go_to("file://#{card}")
+  20.times { break if browser.evaluate("document.fonts.status") == "loaded"; sleep 0.25 }
+  browser.screenshot(path: out.join("og.png").to_s)
   puts "Wrote og.png"
 rescue => e
   puts "Skipped og.png (#{e.class}: #{e.message.lines.first&.strip})"
