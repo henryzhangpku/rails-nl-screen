@@ -12,8 +12,10 @@ def write_preview_image(out, html)
   require "ferrum"
   card = out.join("og-card.html")
   File.write(card, html)
+  # No sandbox in CI or with CHROME_NO_SANDBOX=1 (and as root), as in spec/support/system.rb.
+  no_sandbox = ENV["CI"].present? || ENV["CHROME_NO_SANDBOX"].present? || Process.uid.zero?
   browser = Ferrum::Browser.new(window_size: [ 1200, 627 ], browser_path: ENV["BROWSER_PATH"],
-                                browser_options: Process.uid.zero? ? { "no-sandbox" => nil } : {})
+                                browser_options: no_sandbox ? { "no-sandbox" => nil } : {})
   browser.set_viewport(width: 1200, height: 627, scale_factor: 1) # the window size includes browser chrome; this is the page
   browser.go_to("file://#{card}")
   20.times { break if browser.evaluate("document.fonts.status") == "loaded"; sleep 0.25 }
